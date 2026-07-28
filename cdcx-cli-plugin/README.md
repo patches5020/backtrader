@@ -273,6 +273,70 @@ cdcx-cli/
     └── test_trade_manager.py
 ```
 
+## Using as a Claude Code plugin
+
+This repo doubles as a Claude Code plugin marketplace and plugin (see
+`.claude-plugin/marketplace.json` and `.claude-plugin/plugin.json`). Once
+this repo is pushed to `crypto-com/cdcx-cli` on GitHub:
+
+```
+claude plugin marketplace add crypto-com/cdcx-cli
+claude plugin install cdcx-cli@cdcx-cli
+```
+
+This installs a `/cdcx-analyze [symbol] [timeframe] [limit]` slash command
+inside Claude Code that runs the engine and summarizes the result, e.g.:
+
+```
+/cdcx-analyze BTC/USDT 1h 200
+```
+
+### Bundled MCP server registration
+
+`.mcp.json` at the plugin root registers a separate, more full-featured
+`cdcx mcp` server (exposing `market`, `account`, `trade`, `margin`,
+`staking`, `funding`, `fiat`, `otc`, `bot`, and `stream` tools) so it's
+picked up automatically alongside the plugin, instead of needing to be run
+manually in a terminal.
+
+```json
+{
+  "mcpServers": {
+    "cdcx": {
+      "command": "cdcx",
+      "args": ["mcp"],
+      "env": {
+        "CRYPTOCOM_API_KEY": "${CRYPTOCOM_API_KEY}",
+        "CRYPTOCOM_API_SECRET": "${CRYPTOCOM_API_SECRET}"
+      }
+    }
+  }
+}
+```
+
+This assumes the `cdcx` binary is already installed and on `PATH` wherever
+Claude Code runs (`which cdcx` to confirm) -- this is a separate,
+pre-existing authenticated trading tool, distinct from this repo's own
+`python -m cdcx` analysis engine. If `cdcx` isn't on `PATH`, replace
+`"command": "cdcx"` with the full binary path. Set
+`CRYPTOCOM_API_KEY`/`CRYPTOCOM_API_SECRET` as real environment variables
+before launching Claude Code (or hardcode them here, though env vars are
+safer) -- check that tool's own docs for any additional required variables.
+
+To test locally before pushing to GitHub, point at the local folder instead:
+
+```
+claude plugin marketplace add /path/to/cdcx-cli
+claude plugin install cdcx-cli@cdcx-cli
+```
+
+> **Note:** the Claude Code plugin/marketplace manifest format is a newer,
+> evolving part of Claude Code. The `plugin.json` / `marketplace.json` files
+> here are built from best available knowledge but weren't validated against
+> live documentation. If `claude plugin install` reports a schema error,
+> check https://docs.claude.com/en/docs/claude-code/plugins for the current
+> manifest spec and adjust these two files accordingly.
+
 ## Setup
 
 ```bash
