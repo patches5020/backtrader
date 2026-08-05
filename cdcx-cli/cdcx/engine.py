@@ -29,6 +29,7 @@ from .indicators import volume_profile_anchor
 from .indicators import market_structure
 from .indicators import candlestick_patterns
 from . import regime as regime_module
+from .utils.color import REGIME_TAGS, colorize_regime
 
 # Indicator weights as specified. Note: these already summed to 120 (not
 # 100) before ADX, Bollinger Bands, and Candlestick Patterns were added --
@@ -375,7 +376,13 @@ def format_report(signal: TradeSignal) -> str:
     # is the fix for showing "SIGNAL: STRONG SELL" right next to "Market
     # Regime: NO TRADE" -- regime is checked FIRST and is an absolute gate;
     # everything below it is diagnostic context, not itself a trade call.
-    lines.append(f"MARKET REGIME: {signal.regime.icon} {signal.regime.label}")
+    # Emoji icon (🟢/🟡/🔴) is the primary indicator; the bracketed tag +
+    # ANSI color are a fallback for terminals/fonts that don't render the
+    # emoji glyph (seen in some WSL/mintty setups) -- colorize_regime() is a
+    # no-op (plain text) when stdout isn't a TTY or NO_COLOR is set.
+    regime_tag = REGIME_TAGS.get(signal.regime.regime, "")
+    regime_text = f"{signal.regime.icon} [{regime_tag}] {signal.regime.label}"
+    lines.append(f"MARKET REGIME: {colorize_regime(regime_text, signal.regime.regime)}")
     lines.append(f"  Trend: {signal.regime.trend_score}/10   Range: {signal.regime.range_score}/10")
     lines.append("")
 
