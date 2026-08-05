@@ -129,21 +129,27 @@ def test_timeframe_is_stored_on_signal():
     assert signal.timeframe == "4h"
 
 
-def test_atr_length_matches_actual_atr_period():
-    from cdcx.indicators.atr_ema_variant1 import ATR_LENGTH
-    data = _make_ohlcv([100 + i * 0.1 for i in range(60)])
-    signal = analyze_ohlcv("BTC/USDT", data)
-    assert signal.atr_length == ATR_LENGTH
-
-
-def test_atr_length_matches_the_actual_atr_calculation_period_not_ema_length():
-    # regression: atr_length was hardcoded to 17 (EMA_LENGTH) instead of
-    # the real ATR_LENGTH (11) actually used to compute the ATR shown --
-    # the exact "ATR provenance" bug the field was added to prevent.
+def test_atr_length_matches_the_actual_atr_constant_not_ema_length():
     from cdcx.indicators.atr_ema_variant1 import ATR_LENGTH, EMA_LENGTH
-    assert ATR_LENGTH != EMA_LENGTH  # sanity: this test is only meaningful if they differ
-
     data = _make_ohlcv([100 + i * 0.1 for i in range(60)])
     signal = analyze_ohlcv("BTC/USDT", data)
+    assert EMA_LENGTH == 17
+    assert ATR_LENGTH == 11
     assert signal.atr_length == ATR_LENGTH
-    assert signal.atr_length != EMA_LENGTH
+
+
+def test_neutral_ema_is_not_coerced_to_bullish_or_bearish_by_engine_direction_rule():
+    # Flat prices keep price/EMA and EMA slope neutral. The engine must report
+    # the EMA state as neutral; any directional ATR plan must come from the
+    # aggregate signal, not from an unconditional neutral->down fallback.
+    closes = [100.0] * 80
+    data = _make_ohlcv(closes)
+    signal = analyze_ohlcv("BTC/USDT", data)
+    assert signal.labels["ema_trend"] == "No Clear Trend"
+    if signal.signal in {"STRONG SELL", "SELL"}:
+        assert signal.stop_loss > signal.entry
+    elif signal.signal in {"STRONG BUY", "BUY"}:
+        assert signal.stop_loss < signal.entry
+    else:
+        assert signal.stop_loss == signal.entry
+        assert signal.risk_reward_ratio is None

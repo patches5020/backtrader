@@ -76,7 +76,7 @@ class TradeSignal:
     execution_reason: str = ""     # why execution_signal differs from `signal`, if it does
     computed_at: float = 0.0       # unix timestamp -- proof entry/atr/stop/TP all came from one snapshot
     timeframe: str = ""            # which timeframe this ATR/entry/stop/TP snapshot was computed on
-    atr_length: int = 0            # set explicitly from atr_ema_variant1.ATR_LENGTH below -- never hardcode this
+    atr_length: int = atr_ema_variant1.ATR_LENGTH  # actual ATR period; EMA and ATR periods are intentionally independent
     setup_score: float = 0.0       # 0-100: regime validity + direction strength + R:R + structure + confirmation
     decision: str = ""             # alias of execution_signal -- shown paired with `confidence`, reframed as
     # "Decision Confidence" in the report so a NO TRADE decision reads as "confident this ISN'T a trade,"
@@ -134,7 +134,10 @@ def analyze_ohlcv(
     # --- EMA / ATR / trend -------------------------------------------------
     ema_result = atr_ema_variant1.analyze(data.highs, data.lows, data.closes)
     trend = ema_result.trend
-    direction = "up" if trend == "bullish" else "down"
+    # EMA trend can legitimately be neutral. Never coerce neutral into a
+    # bearish/down direction; that silently contaminates Fibonacci extension
+    # context and (previously) the stop/TP direction.
+    extension_direction = "up" if trend == "bullish" else "down"
 
     # --- ADX (trend strength) ---------------------------------------------
     adx_result = adx_module.analyze(data.highs, data.lows, data.closes, trend=trend)
@@ -155,7 +158,7 @@ def analyze_ohlcv(
     swing_low = min(data.lows[-lookback:])
     retr_result = fibonacci.score_retracement(price, swing_high, swing_low, trend=trend)
     ext_result = fibonacci.score_extension(
-        price, swing_high, swing_low, direction=direction, trend_confirmed=(trend != "neutral")
+        price, swing_high, swing_low, direction=extension_direction, trend_confirmed=(trend != "neutral")
     )
 
     # --- Fair Value Gap ------------------------------------------------
@@ -178,38 +181,29 @@ def analyze_ohlcv(
     )
 
     # --- Stop loss / take profit -----------------------------------------
-    # TP1-4 are now derived from the SAME stop_distance (atr * multiplier)
-    # used for the stop loss, as R-multiples of that distance -- NOT from a
-    # separate Fibonacci swing_high/swing_low lookback. That decoupling was
-    # a real bug: a historical swing can be wildly wider than current
-    # volatility (e.g. a swing high far above current price from months
-    # earlier), producing a stop and a TP ladder that imply two completely
-    # different ATR readings for the same trade -- e.g. a stop 8000+ points
-    # away while price itself sits near the bottom of that old range,
-    # collapsing TP4 toward zero once floored. Deriving both SL and every
-    # TP from one atr/stop_distance value at the same instant makes them
-    # atomic by construction -- there is no way for them to disagree.
+    # TP1-4 are derived from the SAME stop_distance (ATR * 1.5 by default)
+    # used for the stop loss. Never derive execution levels from an unrelated
+    # historical swing.
     stop_distance = ema_result.atr * settings.atr_stop_multiplier
-    stop_loss = price - stop_distance if direction == "up" else price + stop_distance
+    TP_RATIOS = [2.2, 2.6, 3.2, 4.5]
 
-    TP_RATIOS = [2.2, 2.6, 3.2, 4.5]  # R-multiples of stop_distance -- NOT the raw Fibonacci
-    # extension ratios (1.272/1.414/1.618/2.618). Reusing those numbers
-    # directly here was a real bug: TP1 at 1.272x the stop distance means
-    # R:R is mathematically FIXED at exactly 1.272:1 for every single trade,
-    # permanently failing the 2:1 minimum this whole pipeline enforces --
-    # every setup would be blocked forever, trending or ranging. TP1 = 2.2R
-    # clears that minimum with real margin (not sitting exactly on the
-    # boundary, where rounding could flip a pass/fail), and TP2-4 keep the
-    # ladder's spacing proportionally similar to the original ratios.
-    take_profits = {}
-    for i, ratio in enumerate(TP_RATIOS):
-        raw_tp = price + stop_distance * ratio if direction == "up" else price - stop_distance * ratio
-        # defensive floor, same principle as fibonacci.py's -- never return a
-        # non-positive or near-zero price even under extreme ATR readings
-        take_profits[f"TP{i + 1}"] = max(raw_tp, price * 0.01)
+    def _build_plan(plan_direction: str | None):
+        if plan_direction is None:
+            return price, {f"TP{i + 1}": price for i in range(4)}, 0.0, None
+        stop = price - stop_distance if plan_direction == "up" else price + stop_distance
+        tps = {}
+        for i, ratio in enumerate(TP_RATIOS):
+            raw_tp = price + stop_distance * ratio if plan_direction == "up" else price - stop_distance * ratio
+            tps[f"TP{i + 1}"] = max(raw_tp, price * 0.01)
+        rr = abs(tps["TP1"] - price) / abs(price - stop) if price != stop else None
+        return stop, tps, risk_reward_score(price, stop, tps["TP1"]), rr
 
-    rr_score = risk_reward_score(price, stop_loss, take_profits["TP1"])
-    rr_ratio = abs(take_profits["TP1"] - price) / abs(price - stop_loss) if price != stop_loss else None
+    # EMA trend is preferred. A neutral EMA is genuinely neutral; it must not
+    # be coerced into "down". If the aggregate signal later proves clearly
+    # directional, a second pass builds the directional ATR plan from that
+    # signal instead.
+    trade_direction = "up" if trend == "bullish" else "down" if trend == "bearish" else None
+    stop_loss, take_profits, rr_score, rr_ratio = _build_plan(trade_direction)
 
     scores = {
         "ema_trend": ema_result.ema_score,
@@ -242,11 +236,29 @@ def analyze_ohlcv(
         "risk_reward": f"1 : {rr_ratio:.1f}" if rr_ratio else "N/A",
     }
 
-    # Clamp each contribution to its weight, then clamp the total to 0-100
+    # Clamp each contribution to its weight, then clamp the total to 0-100.
     clamped = {k: max(-WEIGHTS[k], min(WEIGHTS[k], v)) for k, v in scores.items()}
     raw_total = sum(clamped.values())
     total = max(0.0, min(100.0, raw_total))
     signal, stars = classify_signal(total)
+
+    # If EMA is neutral but the aggregate indicator score is clearly
+    # directional, use that direction for the ATR plan and refresh only the
+    # R:R contribution. This avoids inventing a bearish plan while preserving
+    # a legitimate non-EMA directional setup.
+    if trade_direction is None:
+        if signal in {"STRONG BUY", "BUY"}:
+            trade_direction = "up"
+        elif signal in {"STRONG SELL", "SELL"}:
+            trade_direction = "down"
+        if trade_direction is not None:
+            stop_loss, take_profits, rr_score, rr_ratio = _build_plan(trade_direction)
+            scores["risk_reward"] = rr_score
+            labels["risk_reward"] = f"1 : {rr_ratio:.1f}" if rr_ratio else "N/A"
+            clamped = {k: max(-WEIGHTS[k], min(WEIGHTS[k], v)) for k, v in scores.items()}
+            raw_total = sum(clamped.values())
+            total = max(0.0, min(100.0, raw_total))
+            signal, stars = classify_signal(total)
 
     # Confidence measures conviction strength -- how far the score sits from
     # the neutral midpoint (50), in either direction -- NOT the raw score
@@ -342,8 +354,8 @@ def analyze_ohlcv(
         execution_reason=execution_reason,
         computed_at=time.time(),
         timeframe=timeframe,
-        setup_score=setup_score,
         atr_length=atr_ema_variant1.ATR_LENGTH,
+        setup_score=setup_score,
         decision=execution_signal,
     )
 

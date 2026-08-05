@@ -58,14 +58,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeframes", default=None,
         help="comma-separated list of timeframes to run in one command, "
              "e.g. 1h,4h,1d,1w -- prints a report for each plus a combined summary. "
-             "Required for --execute (confluence needs 2+ timeframes).",
+             "Trending --execute needs 2+ tradeable timeframes; range mode can execute "
+             "from the fastest available ranging timeframe without trend confluence.",
     )
     parser.add_argument("--limit", type=int, default=settings.default_limit, help="number of candles to fetch")
 
     parser.add_argument(
         "--execute", action="store_true",
-        help="Check multi-timeframe confluence (needs --timeframes with 2+ entries); "
-             "if 2+ timeframes agree AND the entry checklist passes, compute a sized "
+        help="For trending markets, check multi-timeframe confluence (2+ tradeable "
+             "timeframes required); for a validated ranging entry timeframe, use the "
+             "dedicated range-boundary strategy without trend confluence. Compute a sized "
              "trade plan (1.5x ATR stop, 2%% account risk) and open it as a locally "
              "tracked PAPER trade by default. Add --live to also offer sending the real "
              "bracket order via the separately-installed `cdcx` exchange CLI.",
@@ -146,10 +148,49 @@ def _handle_execute(
     symbol: str, balance: float, risk_pct: float, results: dict[str, object], limit: int,
     live: bool = False, instrument_name_override: str = None, news_imminent: bool = False,
 ) -> int:
-    signals_by_tf = {tf: sig.signal for tf, sig in results.items() if sig is not None}
+    # A standalone timeframe marked TRANSITIONAL is diagnostic, not an
+    # executable directional confirmation. Exclude those raw signals from
+    # trend confluence so a higher-timeframe "NO TRADE" cannot silently
+    # contribute bearish/bullish weight. The entry timeframe regime is
+    # recomputed below with higher-timeframe alignment once confluence is known.
+    signals_by_tf = {
+        tf: sig.signal
+        for tf, sig in results.items()
+        if sig is not None and sig.regime.regime != "transitional"
+    }
+
+    # Range mode is intentionally independent of multi-timeframe trend
+    # confluence. If the fastest available execution timeframe is already a
+    # validated range, evaluate the dedicated range-boundary setup directly.
+    allowed = ["1h", "4h", "1d", "1w"]
+    available_tfs = [tf for tf in allowed if results.get(tf) is not None]
+    if available_tfs:
+        range_tf = available_tfs[0]
+        range_signal = results[range_tf]
+        if range_signal.regime.regime == "ranging":
+            from .exchange.cryptocom import CryptoComExchange
+            from .indicators import atr_ema_variant1, adx as adx_module, rsi as rsi_module, volume_profile_fixed
+
+            account_balance = balance if balance is not None else settings.default_account_balance
+            effective_risk_pct = risk_pct if risk_pct is not None else settings.risk_pct_per_trade
+            exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
+            raw_data = exchange.fetch_ohlcv(symbol, timeframe=range_tf, limit=limit)
+            atr_series = atr_ema_variant1.calculate_atr(raw_data.highs, raw_data.lows, raw_data.closes)
+            adx_series, _, _ = adx_module.calculate_adx(raw_data.highs, raw_data.lows, raw_data.closes)
+            rsi_series = rsi_module.calculate_rsi(raw_data.closes)
+            vp_result = volume_profile_fixed.analyze(raw_data.highs, raw_data.lows, raw_data.volumes, price=raw_data.closes[-1])
+            pattern_matches = candlestick_patterns.detect_patterns(raw_data.highs, raw_data.lows, raw_data.opens, raw_data.closes)
+            print()
+            print("RANGE MODE: multi-timeframe trend confluence is not required.")
+            return _handle_ranging_path(
+                symbol, range_signal, account_balance, effective_risk_pct,
+                rsi_series, vp_result, pattern_matches, atr_series, adx_series[-1], news_imminent,
+                live, instrument_name_override,
+            )
+
     if len(signals_by_tf) < 2:
         print(
-            "Not enough successful timeframe reads to evaluate confluence "
+            "Not enough tradeable timeframe reads to evaluate trend confluence "
             f"(got {len(signals_by_tf)}, need at least 2 of 1h/4h/1d/1w). No trade planned.",
             file=sys.stderr,
         )
