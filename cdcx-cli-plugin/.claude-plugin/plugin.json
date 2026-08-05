@@ -1,0 +1,17 @@
+{
+  "name": "cdcx-cli",
+  "version": "0.1.0",
+  "description": "AI-weighted trade analysis engine for Crypto.com markets -- combines EMA/ATR, ADX, Bollinger Bands, RSI, Fibonacci, Fair Value Gap, Volume Profile, and Market Structure into a single 0-100 scored trade signal with entry, stop loss, and take-profit targets. Also includes multi-timeframe (1H/4H/1D/1W) confluence execution planning and local paper-trade tracking (1.5x ATR stop, 2% account risk, break-even/trailing-stop rules) -- no live order routing.",
+  "author": {
+    "name": "Crypto.com",
+    "url": "https://github.com/crypto-com"
+  },
+  "homepage": "https://github.com/crypto-com/cdcx-cli",
+  "license": "MIT",
+  "keywords": [
+    "trading",
+    "crypto",
+    "technical-analysis",
+    "crypto.com"
+  ]
+}
