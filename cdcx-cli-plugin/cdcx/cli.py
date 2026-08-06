@@ -118,48 +118,86 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--structure", action="store_true",
-        help="Append the POC/FVG/volume structure system to the same run's report, "
-             "across the 1W (major structure) / 1D (major volume structure) / 4H "
-             "(primary setup) / 1H (entry confirmation) role hierarchy: breakout+retest "
-             "or FVG+volume confluence off the 1D support/resistance, confirmed on 1H. "
-             "Combines with the normal --timeframe/--timeframes report (and --execute) "
-             "into one final output instead of a separate standalone read -- it always "
-             "fetches its own 1w/1d/4h/1h candles regardless of --timeframe/--timeframes, "
-             "using --symbol only.",
+        help="Merge the POC/FVG/volume structure system into the same run's report: "
+             "any requested timeframe that is one of 1w/1d/4h/1h gets its structure "
+             "block (POC/resistance/support/condition) printed right after that "
+             "timeframe's own indicator report, and a final 1W (major structure) / "
+             "1D (major volume structure) / 4H (primary setup) / 1H (entry "
+             "confirmation) LONG/SHORT trigger evaluation is appended at the end -- "
+             "fetching whichever of those four roles wasn't already covered by "
+             "--timeframe/--timeframes.",
     )
     return parser
 
 
-def _print_structure_section(symbol: str) -> bool:
-    """Fetch 1w/1d/4h/1h candles and print the POC/FVG/breakout-retest structure
-    section. Appended after the main engine report (and --execute plan, if any) so a
-    single run's final output carries both analyses together. Returns True on success,
-    False (after printing the error) if the candles couldn't be fetched."""
+# The four timeframe roles the structural setup system is built around (see
+# structure_strategy.py). Keyed by the same lowercase strings --timeframe/
+# --timeframes already use, so a requested timeframe that happens to be one
+# of these gets its structure block merged right into that timeframe's own
+# report, instead of the two systems only ever appearing in separate sections.
+_STRUCTURE_ROLES = {
+    "1w": "major structure",
+    "1d": "major volume structure",
+    "4h": "primary setup",
+    "1h": "entry confirmation",
+}
+
+
+def _fetch_structure_map(symbol: str, timeframe: str, limit: int):
+    """Fetch OHLCV for one timeframe and return (StructureMap, raw OHLCV data).
+    Returns (None, None), after printing the error, on a fetch failure."""
     from .exchange.cryptocom import CryptoComExchange
 
     exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
-
     try:
-        w1_data = exchange.fetch_ohlcv(symbol, timeframe="1w", limit=settings.default_limit)
-        d1_data = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=settings.default_limit)
-        h4_data = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=settings.default_limit)
-        h1_data = exchange.fetch_ohlcv(symbol, timeframe="1h", limit=settings.default_limit)
+        data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
     except Exception as exc:
-        print(f"Error fetching candles for structure analysis of {symbol}: {exc}", file=sys.stderr)
-        return False
+        print(f"Error fetching candles for structure analysis of {symbol} @ {timeframe}: {exc}", file=sys.stderr)
+        return None, None
 
-    w1_map = structure_levels.compute_structure_map(w1_data.highs, w1_data.lows, w1_data.closes, w1_data.volumes)
-    d1_map = structure_levels.compute_structure_map(d1_data.highs, d1_data.lows, d1_data.closes, d1_data.volumes)
-    h4_map = structure_levels.compute_structure_map(h4_data.highs, h4_data.lows, h4_data.closes, h4_data.volumes)
+    smap = structure_levels.compute_structure_map(data.highs, data.lows, data.closes, data.volumes)
+    return smap, data
 
-    bar = "=" * 49
+
+def _print_merged_structure_block(symbol: str, timeframe: str, limit: int, cache: dict) -> None:
+    """If `timeframe` is one of the four structural roles (1W/1D/4H/1H), fetch
+    and print its STRUCTURE block immediately after that timeframe's own
+    indicator report -- one merged block per timeframe, rather than a
+    separate section for the whole structure system. Populates `cache` so
+    `_print_structure_setup_section` below can reuse this fetch instead of
+    hitting the exchange again for the same timeframe."""
+    role = _STRUCTURE_ROLES.get(timeframe)
+    if role is None:
+        return
+
+    smap, data = _fetch_structure_map(symbol, timeframe, limit)
+    if smap is None:
+        return
+
+    cache[timeframe] = (smap, data)
     print()
-    print(bar)
-    print("STRUCTURE ANALYSIS (POC / FVG / Breakout-Retest)".center(49))
-    print(bar)
-    print(structure_levels.format_structure_map("1W (major structure)", w1_map))
-    print(structure_levels.format_structure_map("1D (major volume structure)", d1_map))
-    print(structure_levels.format_structure_map("4H (primary setup)", h4_map))
+    print(structure_levels.format_structure_map(f"{timeframe.upper()} ({role})", smap))
+
+
+def _print_structure_setup_section(symbol: str, limit: int, cache: dict) -> bool:
+    """Print the combined 1W/1D/4H/1H LONG/SHORT trigger evaluation, reusing
+    whatever per-timeframe structure data the report loop already fetched
+    (via `_print_merged_structure_block`) and only fetching what's still
+    missing -- e.g. when --structure is used with a --timeframe/--timeframes
+    set that doesn't already cover all four roles. Returns True on success,
+    False (after printing the error) if any required timeframe couldn't be
+    fetched."""
+    for tf in ("1w", "1d", "4h", "1h"):
+        if tf not in cache:
+            smap, data = _fetch_structure_map(symbol, tf, limit)
+            if smap is None:
+                return False
+            cache[tf] = (smap, data)
+
+    w1_map, _ = cache["1w"]
+    d1_map, _ = cache["1d"]
+    h4_map, h4_data = cache["4h"]
+    _, h1_data = cache["1h"]
 
     setup = structure_strategy.evaluate_structure_setup(
         w1_map, d1_map, h4_map,
@@ -575,6 +613,7 @@ def main(argv: list[str] | None = None) -> int:
         timeframes = [tf.strip() for tf in args.timeframes.split(",") if tf.strip()]
         results = {}
         any_success = False
+        structure_cache = {}
 
         for tf in timeframes:
             signal = _run_single(args.symbol, tf, args.limit)
@@ -582,6 +621,11 @@ def main(argv: list[str] | None = None) -> int:
             if signal is not None:
                 any_success = True
                 print(engine.format_report(signal))
+                # Merged right into this timeframe's own block -- if `tf` is one
+                # of 1w/1d/4h/1h, its structure section prints here instead of
+                # in a separate section for the whole structure system.
+                if args.structure:
+                    _print_merged_structure_block(args.symbol, tf, args.limit, structure_cache)
                 print()
 
         _print_summary_table(args.symbol, results)
@@ -595,10 +639,10 @@ def main(argv: list[str] | None = None) -> int:
         else:
             result = 0 if any_success else 1
 
-        # Combined into the same final output rather than a separate standalone
-        # read -- appended last so it sits after the confluence/execute plan above.
+        # Final combined LONG/SHORT trigger evaluation across all four roles,
+        # reusing whatever the per-timeframe blocks above already fetched.
         if args.structure:
-            _print_structure_section(args.symbol)
+            _print_structure_setup_section(args.symbol, args.limit, structure_cache)
 
         return result
 
@@ -610,6 +654,10 @@ def main(argv: list[str] | None = None) -> int:
 
     print(engine.format_report(signal))
 
+    structure_cache = {}
+    if args.structure:
+        _print_merged_structure_block(args.symbol, timeframe, args.limit, structure_cache)
+
     result = 0
     if args.execute:
         print(
@@ -620,7 +668,7 @@ def main(argv: list[str] | None = None) -> int:
         result = 1
 
     if args.structure:
-        _print_structure_section(args.symbol)
+        _print_structure_setup_section(args.symbol, args.limit, structure_cache)
 
     return result
 

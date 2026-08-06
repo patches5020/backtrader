@@ -483,21 +483,30 @@ oversight, it just wasn't part of the spec this was built against, even
 though `structure_levels.find_fvg_near_level()` would support one
 trivially if it's ever wanted.
 
-`--structure` no longer runs as a separate, standalone command -- it composes
-with whatever else the run is already doing, appending the structure section
-to the *same final output* instead of requiring a second invocation:
+`--structure` doesn't run as a separate command, and it doesn't just append a
+second report after the first one either -- it **merges into the same
+per-timeframe blocks**. If a timeframe you requested (via `--timeframe` or
+`--timeframes`) happens to be one of the four structural roles (1w/1d/4h/1h),
+that timeframe's STRUCTURE block (POC/resistance/support/condition) prints
+immediately after that same timeframe's indicator report -- one block per
+timeframe, not two separate systems. Whichever of the four roles wasn't
+already covered by what you requested still gets fetched, so the final
+LONG/SHORT trigger evaluation (which needs all four) can always run; it's
+printed once, at the very end, after the summary table and `--execute` plan:
 
 ```bash
-# just the structure section (still fetches its own 1w/1d/4h/1h regardless
-# of --timeframe/--timeframes, since none of those are passed here)
-python -m cdcx --symbol BTC/USDT --structure
-
-# combined: the normal single-timeframe report AND the structure section,
-# in one command's output
+# --timeframe 1h is itself one of the four roles ("entry confirmation") --
+# its STRUCTURE block merges right into this one report, then 1w/1d/4h are
+# fetched just for the final trigger evaluation
 python -m cdcx --symbol BTC/USDT --timeframe 1h --structure
 
-# combined: multi-timeframe confluence + execute plan, with the structure
-# section appended after it
+# --timeframe 15m isn't one of the four roles -- no merged block for it, but
+# the final trigger evaluation still runs (fetching all four itself)
+python -m cdcx --symbol BTC/USDT --timeframe 15m --structure
+
+# all four roles requested up front -- every block gets its structure section
+# merged in, and the final trigger evaluation reuses those same fetches
+# (no redundant re-fetching) instead of hitting the exchange again
 python -m cdcx --symbol BTC/USDT --timeframes 1h,4h,1d,1w --execute --balance 10000 --structure
 ```
 
