@@ -483,9 +483,22 @@ oversight, it just wasn't part of the spec this was built against, even
 though `structure_levels.find_fvg_near_level()` would support one
 trivially if it's ever wanted.
 
+`--structure` no longer runs as a separate, standalone command -- it composes
+with whatever else the run is already doing, appending the structure section
+to the *same final output* instead of requiring a second invocation:
+
 ```bash
-# always fetches 1w/1d/4h/1h regardless of --timeframe/--timeframes
+# just the structure section (still fetches its own 1w/1d/4h/1h regardless
+# of --timeframe/--timeframes, since none of those are passed here)
 python -m cdcx --symbol BTC/USDT --structure
+
+# combined: the normal single-timeframe report AND the structure section,
+# in one command's output
+python -m cdcx --symbol BTC/USDT --timeframe 1h --structure
+
+# combined: multi-timeframe confluence + execute plan, with the structure
+# section appended after it
+python -m cdcx --symbol BTC/USDT --timeframes 1h,4h,1d,1w --execute --balance 10000 --structure
 ```
 
 ```python
@@ -504,11 +517,11 @@ setup = evaluate_structure_setup(
 print(format_structure_setup(setup))
 ```
 
-This system doesn't feed into `--execute`'s trading/ranging decision or
-`trade_manager.py` -- it's a standalone read, reported and left for you to
-act on manually (or wire into `--execute`/`--live` yourself, following the
-same pattern `_handle_trending_path`/`_handle_ranging_path` use in
-`cli.py`).
+This system still doesn't feed *into* `--execute`'s trading/ranging decision
+or `trade_manager.py` -- it's a second, independent read, printed alongside
+the main report so you see both together, and left for you to act on
+manually (or wire into `--execute`/`--live` yourself, following the same
+pattern `_handle_trending_path`/`_handle_ranging_path` use in `cli.py`).
 
 ## Project layout
 

@@ -139,16 +139,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--structure", action="store_true",
-        help="Run the POC/FVG/volume structure system across the 1W (major structure) / "
-             "1D (major volume structure) / 4H (primary setup) / 1H (entry confirmation) "
-             "role hierarchy: breakout+retest or FVG+volume confluence off the 1D support/"
-             "resistance, confirmed on 1H. Always fetches 1w/1d/4h/1h regardless of "
-             "--timeframe/--timeframes. Uses --symbol only.",
+        help="Append the POC/FVG/volume structure system to the same run's report, "
+             "across the 1W (major structure) / 1D (major volume structure) / 4H "
+             "(primary setup) / 1H (entry confirmation) role hierarchy: breakout+retest "
+             "or FVG+volume confluence off the 1D support/resistance, confirmed on 1H. "
+             "Combines with the normal --timeframe/--timeframes report (and --execute) "
+             "into one final output instead of a separate standalone read -- it always "
+             "fetches its own 1w/1d/4h/1h candles regardless of --timeframe/--timeframes, "
+             "using --symbol only.",
     )
     return parser
 
 
-def _handle_structure(symbol: str) -> int:
+def _print_structure_section(symbol: str) -> bool:
+    """Fetch 1w/1d/4h/1h candles and print the POC/FVG/breakout-retest structure
+    section. Appended after the main engine report (and --execute plan, if any) so a
+    single run's final output carries both analyses together. Returns True on success,
+    False (after printing the error) if the candles couldn't be fetched."""
     from .exchange.cryptocom import CryptoComExchange
 
     exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
@@ -159,13 +166,18 @@ def _handle_structure(symbol: str) -> int:
         h4_data = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=settings.default_limit)
         h1_data = exchange.fetch_ohlcv(symbol, timeframe="1h", limit=settings.default_limit)
     except Exception as exc:
-        print(f"Error fetching candles for {symbol}: {exc}", file=sys.stderr)
-        return 1
+        print(f"Error fetching candles for structure analysis of {symbol}: {exc}", file=sys.stderr)
+        return False
 
     w1_map = structure_levels.compute_structure_map(w1_data.highs, w1_data.lows, w1_data.closes, w1_data.volumes)
     d1_map = structure_levels.compute_structure_map(d1_data.highs, d1_data.lows, d1_data.closes, d1_data.volumes)
     h4_map = structure_levels.compute_structure_map(h4_data.highs, h4_data.lows, h4_data.closes, h4_data.volumes)
 
+    bar = "=" * 49
+    print()
+    print(bar)
+    print("STRUCTURE ANALYSIS (POC / FVG / Breakout-Retest)".center(49))
+    print(bar)
     print(structure_levels.format_structure_map("1W (major structure)", w1_map))
     print(structure_levels.format_structure_map("1D (major volume structure)", d1_map))
     print(structure_levels.format_structure_map("4H (primary setup)", h4_map))
@@ -177,7 +189,7 @@ def _handle_structure(symbol: str) -> int:
     )
     print()
     print(structure_strategy.format_structure_setup(setup))
-    return 0
+    return True
 
 
 def _handle_backtrader(args: argparse.Namespace) -> int:
@@ -612,10 +624,10 @@ def main(argv: list[str] | None = None) -> int:
         return _handle_update_trades()
 
     if args.backtrader:
-        return _handle_backtrader(args)
-
-    if args.structure:
-        return _handle_structure(args.symbol)
+        result = _handle_backtrader(args)
+        if args.structure:
+            _print_structure_section(args.symbol)
+        return result
 
     from . import engine  # deferred: requires ccxt, not needed for the branches above
 
@@ -635,13 +647,20 @@ def main(argv: list[str] | None = None) -> int:
         _print_summary_table(args.symbol, results)
 
         if args.execute:
-            return _handle_execute(
+            result = _handle_execute(
                 args.symbol, args.balance, args.risk_pct, results, args.limit,
                 live=args.live, instrument_name_override=args.instrument_name,
                 news_imminent=args.news_imminent,
             )
+        else:
+            result = 0 if any_success else 1
 
-        return 0 if any_success else 1
+        # Combined into the same final output rather than a separate standalone
+        # read -- appended last so it sits after the confluence/execute plan above.
+        if args.structure:
+            _print_structure_section(args.symbol)
+
+        return result
 
     # single-timeframe path (backwards compatible)
     timeframe = args.timeframe or settings.default_timeframe
@@ -651,15 +670,19 @@ def main(argv: list[str] | None = None) -> int:
 
     print(engine.format_report(signal))
 
+    result = 0
     if args.execute:
         print(
             "\n--execute needs --timeframes with at least 2 timeframes to check "
             "confluence (e.g. --timeframes 1h,4h,1d,1w). No trade planned.",
             file=sys.stderr,
         )
-        return 1
+        result = 1
 
-    return 0
+    if args.structure:
+        _print_structure_section(args.symbol)
+
+    return result
 
 
 if __name__ == "__main__":
