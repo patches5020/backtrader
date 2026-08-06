@@ -430,6 +430,86 @@ still used where they were before.
 python -m cdcx --symbol BTC/USDT --timeframes 1h,4h,1d,1w --execute --balance 10000 --news-imminent
 ```
 
+## Structural setup system (cdcx/structure_levels.py, cdcx/structure_strategy.py)
+
+A separate, named-component view of the chart, orthogonal to the
+trending/ranging path above -- built around eight chart-analysis
+components with fixed display conventions:
+
+| Letter | Component | Display | Backed by |
+|---|---|---|---|
+| A | POC (Point of Control) | WHITE level | `indicators/volume_profile_fixed.py` (`poc`) |
+| B | FVG (Fair Value Gap) | zone | `indicators/fair_value_gap.py` |
+| C | Volume High / Resistance | GREEN level | `indicators/volume_profile_fixed.py` (`vah`) |
+| D | Volume Low / Support | RED level | `indicators/volume_profile_fixed.py` (`val`) |
+| E | Consolidation | market condition | ranging regime + contracting ATR |
+| F | Ranging | market condition | `regime.py`'s "ranging" state |
+| G | Breakout | price event | `structure_levels.detect_breakout()` |
+| H | Retest | price event | `structure_levels.detect_retest()` |
+
+A, C, D, E, and F are names for calculations this project already had
+(volume profile, regime detection); G and H are genuinely new -- a
+decisive close through a named level, and a controlled return to that
+level afterward without re-crossing it.
+
+**Timeframe roles** (1W/1D/4H/1H, distinct from the trending path's
+1h/4h/1d/1w confluence check):
+
+| Timeframe | Role |
+|---|---|
+| 1W | Major structure -- advisory bias: which side of the weekly POC is price on? |
+| 1D | Major volume structure -- the POC/resistance/support levels the setup trades against |
+| 4H | Primary setup -- where the breakout+retest or FVG+volume confluence is detected |
+| 1H | Entry confirmation -- does the fastest timeframe agree, right now? |
+
+1W is advisory, not a hard gate: LONG triggers only fire with price above
+the weekly POC, SHORT only below -- lower timeframes aren't blocked by a
+neutral weekly read, only by an opposing one.
+
+**Three entry triggers**, evaluated in this order, first match wins:
+
+```
+LONG  breakout_retest:  4H closes through the 1D support/low-volume area
+                        -> retest holds -> 1H confirms bullish.
+LONG  fvg_confluence:   an unfilled bullish 4H FVG sits near the 1D POC
+                        or support -> price reacts bullishly -> 1H
+                        confirms bullish.
+SHORT breakdown_retest: 4H closes through the 1D resistance/high-volume
+                        area -> retest holds -> 1H confirms bearish.
+```
+
+There's no symmetric bearish FVG-confluence trigger -- that's not an
+oversight, it just wasn't part of the spec this was built against, even
+though `structure_levels.find_fvg_near_level()` would support one
+trivially if it's ever wanted.
+
+```bash
+# always fetches 1w/1d/4h/1h regardless of --timeframe/--timeframes
+python -m cdcx --symbol BTC/USDT --structure
+```
+
+```python
+from cdcx.structure_levels import compute_structure_map, format_structure_map
+from cdcx.structure_strategy import evaluate_structure_setup, format_structure_setup
+
+w1 = compute_structure_map(w1_data.highs, w1_data.lows, w1_data.closes, w1_data.volumes)
+d1 = compute_structure_map(d1_data.highs, d1_data.lows, d1_data.closes, d1_data.volumes)
+h4 = compute_structure_map(h4_data.highs, h4_data.lows, h4_data.closes, h4_data.volumes)
+
+setup = evaluate_structure_setup(
+    w1, d1, h4,
+    h4_data.highs, h4_data.lows, h4_data.closes, h4_data.volumes,
+    h1_data.highs, h1_data.lows, h1_data.opens, h1_data.closes,
+)
+print(format_structure_setup(setup))
+```
+
+This system doesn't feed into `--execute`'s trading/ranging decision or
+`trade_manager.py` -- it's a standalone read, reported and left for you to
+act on manually (or wire into `--execute`/`--live` yourself, following the
+same pattern `_handle_trending_path`/`_handle_ranging_path` use in
+`cli.py`).
+
 ## Project layout
 
 ```
@@ -475,6 +555,8 @@ cdcx-cli/
 │   │   ├── execution.py       # market vs TWAP fill/cost modeling
 │   │   ├── data_loader.py     # load OHLCV from CSV
 │   │   └── synthetic.py       # synthetic multi-regime OHLCV generator
+│   ├── structure_levels.py    # POC/FVG/volume levels + breakout & retest detection (A-H)
+│   ├── structure_strategy.py  # 1W/1D/4H/1H structural entry combos
 │   ├── scanner/                 # reserved for multi-symbol scanning
 │   └── utils/
 │
@@ -494,7 +576,9 @@ cdcx-cli/
     ├── test_no_trade_filter.py
     ├── test_confidence_scoring.py
     ├── test_execute_integration.py
-    └── test_engine_regression.py
+    ├── test_engine_regression.py
+    ├── test_structure_levels.py
+    └── test_structure_strategy.py
 ```
 
 ## Using as a Claude Code plugin

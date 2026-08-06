@@ -36,6 +36,8 @@ from . import regime as regime_module
 from . import ranging_strategy
 from . import no_trade_filter
 from . import confidence_scoring
+from . import structure_levels
+from . import structure_strategy
 from .indicators import candlestick_patterns
 from .config import settings
 
@@ -135,7 +137,47 @@ def build_parser() -> argparse.ArgumentParser:
         "--plot", action="store_true",
         help="With --backtrader: show a backtrader plot after the run.",
     )
+    parser.add_argument(
+        "--structure", action="store_true",
+        help="Run the POC/FVG/volume structure system across the 1W (major structure) / "
+             "1D (major volume structure) / 4H (primary setup) / 1H (entry confirmation) "
+             "role hierarchy: breakout+retest or FVG+volume confluence off the 1D support/"
+             "resistance, confirmed on 1H. Always fetches 1w/1d/4h/1h regardless of "
+             "--timeframe/--timeframes. Uses --symbol only.",
+    )
     return parser
+
+
+def _handle_structure(symbol: str) -> int:
+    from .exchange.cryptocom import CryptoComExchange
+
+    exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
+
+    try:
+        w1_data = exchange.fetch_ohlcv(symbol, timeframe="1w", limit=settings.default_limit)
+        d1_data = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=settings.default_limit)
+        h4_data = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=settings.default_limit)
+        h1_data = exchange.fetch_ohlcv(symbol, timeframe="1h", limit=settings.default_limit)
+    except Exception as exc:
+        print(f"Error fetching candles for {symbol}: {exc}", file=sys.stderr)
+        return 1
+
+    w1_map = structure_levels.compute_structure_map(w1_data.highs, w1_data.lows, w1_data.closes, w1_data.volumes)
+    d1_map = structure_levels.compute_structure_map(d1_data.highs, d1_data.lows, d1_data.closes, d1_data.volumes)
+    h4_map = structure_levels.compute_structure_map(h4_data.highs, h4_data.lows, h4_data.closes, h4_data.volumes)
+
+    print(structure_levels.format_structure_map("1W (major structure)", w1_map))
+    print(structure_levels.format_structure_map("1D (major volume structure)", d1_map))
+    print(structure_levels.format_structure_map("4H (primary setup)", h4_map))
+
+    setup = structure_strategy.evaluate_structure_setup(
+        w1_map, d1_map, h4_map,
+        h4_data.highs, h4_data.lows, h4_data.closes, h4_data.volumes,
+        h1_data.highs, h1_data.lows, h1_data.opens, h1_data.closes,
+    )
+    print()
+    print(structure_strategy.format_structure_setup(setup))
+    return 0
 
 
 def _handle_backtrader(args: argparse.Namespace) -> int:
@@ -571,6 +613,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.backtrader:
         return _handle_backtrader(args)
+
+    if args.structure:
+        return _handle_structure(args.symbol)
 
     from . import engine  # deferred: requires ccxt, not needed for the branches above
 
