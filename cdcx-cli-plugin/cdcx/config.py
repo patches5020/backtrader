@@ -20,6 +20,11 @@ class Settings:
     cryptocom_api_key: str = os.getenv("CRYPTOCOM_API_KEY", "")
     cryptocom_api_secret: str = os.getenv("CRYPTOCOM_API_SECRET", "")
 
+    # Optional Market Data License (MDLA) key for the Crypto.com Predictions
+    # API (see cdcx/predictions.py) -- raises the anonymous rate limits.
+    # Every --predictions* command works fine with this left blank.
+    predictions_api_key: str = os.getenv("PREDICTIONS_API_KEY", "")
+
     default_symbol: str = os.getenv("DEFAULT_SYMBOL", "BTC/USDT")
     default_timeframe: str = os.getenv("DEFAULT_TIMEFRAME", "1h")
     default_limit: int = int(os.getenv("DEFAULT_LIMIT", "200"))

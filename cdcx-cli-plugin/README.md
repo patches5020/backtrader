@@ -532,6 +532,62 @@ the main report so you see both together, and left for you to act on
 manually (or wire into `--execute`/`--live` yourself, following the same
 pattern `_handle_trending_path`/`_handle_ranging_path` use in `cli.py`).
 
+## Predictions market data (cdcx/predictions.py)
+
+A thin client for the public **Crypto.com Predictions Market Data API**
+(`data-api.crypto.com` -- a separate product from both the App API and the
+Exchange API used elsewhere in this project). Prediction markets are
+binary-outcome contracts -- sports, crypto price thresholds, elections,
+and similar events -- priced by a live order book: a YES share trading at
+`0.63` means the market is pricing that outcome at roughly a 63% chance.
+
+Read-only market data needs **no API key** -- anonymous access is open for
+personal, non-commercial use, rate-limited by Crypto.com (not by this
+project) to 100 requests/minute and 50,000/day per IP. Set
+`PREDICTIONS_API_KEY` in `.env` if you have a licensed Market Data License
+(MDLA) key for higher limits; every command below works fine without one.
+
+These are independent, standalone commands -- like `--list-trades` /
+`--update-trades` -- not tied to `--symbol`/`--timeframe` and not wired
+into `--execute`'s trade decision:
+
+```bash
+# list events, optionally filtered by category
+python -m cdcx --predictions            # all kinds
+python -m cdcx --predictions NFL        # just NFL
+python -m cdcx --predictions --predictions-limit 5
+
+# full-text search across events
+python -m cdcx --predictions-search "super bowl"
+
+# real-time pricing for one contract -- the implied probability of a
+# specific binary outcome
+python -m cdcx --predictions-contract BTC-YES
+```
+
+```python
+from cdcx.predictions import PredictionsClient, format_events, format_contract_price
+
+client = PredictionsClient()  # api_key="" works fine for anonymous access
+events = client.list_events(kind="NFL", limit=5)
+print(format_events("PREDICTION MARKET EVENTS", events))
+
+price = client.get_contract_price("BTC-YES")
+print(format_contract_price(price))
+```
+
+> **Schema caveat, flagged rather than silently assumed:** this project's
+> sandbox cannot reach `crypto.com` at all (outbound requests to the whole
+> domain are blocked in the environment this was built in), so
+> `_parse_contract_price` was written defensively against the quickstart
+> docs alone rather than a captured real response -- it tries
+> `yes_price`/`no_price` first, falls back to treating a lone `last_price`
+> as the YES side, and always keeps the full response on
+> `ContractPrice.raw` so nothing is lost if the real field names differ.
+> `_parse_event`'s `title`/`kind` fields **are** confirmed directly from
+> the quickstart's own sample code. Verify `_parse_contract_price` against
+> a real response once you can reach the API, and adjust if needed.
+
 ## Project layout
 
 ```
@@ -579,6 +635,7 @@ cdcx-cli/
 │   │   └── synthetic.py       # synthetic multi-regime OHLCV generator
 │   ├── structure_levels.py    # POC/FVG/volume levels + breakout & retest detection (A-H)
 │   ├── structure_strategy.py  # 1W/1D/4H/1H structural entry combos
+│   ├── predictions.py         # Crypto.com Predictions Market Data API client
 │   ├── scanner/                 # reserved for multi-symbol scanning
 │   └── utils/
 │
@@ -600,7 +657,10 @@ cdcx-cli/
     ├── test_execute_integration.py
     ├── test_engine_regression.py
     ├── test_structure_levels.py
-    └── test_structure_strategy.py
+    ├── test_structure_strategy.py
+    ├── test_predictions.py
+    ├── test_cli_predictions.py
+    └── test_cli_structure_combination.py
 ```
 
 ## Using as a Claude Code plugin

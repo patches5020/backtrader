@@ -127,6 +127,32 @@ def build_parser() -> argparse.ArgumentParser:
              "fetching whichever of those four roles wasn't already covered by "
              "--timeframe/--timeframes.",
     )
+    parser.add_argument(
+        "--predictions", metavar="KIND", nargs="?", const="__all__", default=None,
+        help="Query the public Crypto.com Predictions Market Data API "
+             "(data-api.crypto.com) for prediction-market events -- sports, crypto "
+             "price-threshold, and other binary-outcome markets. No API key needed "
+             "for anonymous read-only access (Crypto.com rate-limits it to 100 "
+             "req/min / 50,000 req/day per IP). Pass a category to filter, e.g. "
+             "--predictions NFL, or bare --predictions for all kinds. Independent "
+             "of --symbol/--timeframe -- this queries prediction markets, not OHLCV "
+             "candles.",
+    )
+    parser.add_argument(
+        "--predictions-search", metavar="QUERY", default=None,
+        help="Full-text search prediction-market events, "
+             "e.g. --predictions-search 'super bowl'.",
+    )
+    parser.add_argument(
+        "--predictions-contract", metavar="TICKER", default=None,
+        help="Real-time pricing for one prediction contract, e.g. "
+             "--predictions-contract BTC-YES. A YES share's price is the market's "
+             "implied probability of that outcome (0.63 ~= 63%%).",
+    )
+    parser.add_argument(
+        "--predictions-limit", type=int, default=20,
+        help="Max events returned by --predictions / --predictions-search (default: 20).",
+    )
     return parser
 
 
@@ -593,6 +619,59 @@ def _handle_list_trades() -> int:
     return 0
 
 
+def _handle_predictions_list(kind: str, limit: int) -> int:
+    from .predictions import PredictionsClient, PredictionsRateLimited, format_events
+
+    client = PredictionsClient(api_key=settings.predictions_api_key)
+    kind_filter = None if kind == "__all__" else kind
+    try:
+        events = client.list_events(kind=kind_filter, limit=limit)
+    except PredictionsRateLimited as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Error fetching prediction events: {exc}", file=sys.stderr)
+        return 1
+
+    label = f"kind={kind_filter}" if kind_filter else "all kinds"
+    print(format_events(f"PREDICTION MARKET EVENTS ({label})", events))
+    return 0
+
+
+def _handle_predictions_search(query: str, limit: int) -> int:
+    from .predictions import PredictionsClient, PredictionsRateLimited, format_events
+
+    client = PredictionsClient(api_key=settings.predictions_api_key)
+    try:
+        events = client.search_events(query, limit=limit)
+    except PredictionsRateLimited as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Error searching prediction events: {exc}", file=sys.stderr)
+        return 1
+
+    print(format_events(f'PREDICTION MARKET SEARCH -- "{query}"', events))
+    return 0
+
+
+def _handle_predictions_contract(ticker: str) -> int:
+    from .predictions import PredictionsClient, PredictionsRateLimited, format_contract_price
+
+    client = PredictionsClient(api_key=settings.predictions_api_key)
+    try:
+        price = client.get_contract_price(ticker)
+    except PredictionsRateLimited as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Error fetching contract price for {ticker}: {exc}", file=sys.stderr)
+        return 1
+
+    print(format_contract_price(price))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -606,6 +685,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.update_trades:
         return _handle_update_trades()
+
+    if args.predictions is not None:
+        return _handle_predictions_list(args.predictions, args.predictions_limit)
+
+    if args.predictions_search:
+        return _handle_predictions_search(args.predictions_search, args.predictions_limit)
+
+    if args.predictions_contract:
+        return _handle_predictions_contract(args.predictions_contract)
 
     from . import engine  # deferred: requires ccxt, not needed for the branches above
 
