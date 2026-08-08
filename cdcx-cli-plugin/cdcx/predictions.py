@@ -21,17 +21,30 @@ Endpoints wrapped (see the quickstart at https://data.crypto.com/quickstart):
     GET /events/search          -- full-text search across events
     GET /contracts/{ticker}/price -- real-time pricing for one contract
 
-Note on the contract-price response shape: the quickstart docs confirm the
-events response is `{"data": [...]}` with `title`/`kind` fields per event
-(shown directly in the docs' own sample code), but this project's sandbox
-cannot reach crypto.com to capture a live `/contracts/{ticker}/price`
-response body -- outbound requests to the whole crypto.com domain family
-are blocked here. `_parse_contract_price` below is written defensively: it
-tries a handful of plausible field names (`yes_price`/`no_price`, or
-`last_price`) and always keeps the full raw JSON on `ContractPrice.raw`, so
-nothing is lost if the guessed field names don't match. Verify against a
-real response on a machine that can reach data-api.crypto.com and adjust
-`_parse_contract_price` if the field names differ.
+Schema confirmed against a real response (captured from a live `curl` on a
+machine that can reach data-api.crypto.com -- this project's own sandbox
+cannot). Each event looks like:
+
+    {"id": "...", "title": "Green Bay @ Pittsburgh", "kind": "NFL",
+     "type": "match", "event_date": "...", "status": "active",
+     "contracts_count": 2, "market_format": "head_to_head",
+     "metadata": {...},
+     "contracts": [
+        {"id": "...", "symbol": "NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO",
+         "title": "Green Bay", "status": "active",
+         "yes": "0.58", "no": "0.45", "chance": "58.00",
+         "payout_per_100": "172.41", "team": {...}, "market_type": {...}},
+        ...
+     ]}
+
+The important, non-obvious thing this confirmed: **a contract's real
+identifier is its `symbol`** (a long structured string like the one
+above) -- NOT a short asset-style code like "BTC-YES". That exact ticker
+is the quickstart docs' own illustrative example and 404s in practice
+(confirmed live) -- real tickers only come from the `contracts[].symbol`
+field of an `/events` (or `/events/search`) response. `get_contract_price`
+still takes whatever ticker string you give it; get a real one from
+`--predictions`/`--predictions-search` first.
 """
 
 from __future__ import annotations
@@ -56,11 +69,36 @@ class PredictionsNotFound(RuntimeError):
     message instead of raw requests exception text."""
 
 
+def _to_float(value) -> Optional[float]:
+    """Predictions API numeric fields (yes/no/chance/payout_per_100) are
+    returned as strings (e.g. "0.58") -- convert defensively, never raise."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@dataclass
+class Contract:
+    id: str
+    symbol: str
+    title: str
+    status: str
+    yes_price: Optional[float]
+    no_price: Optional[float]
+    chance_pct: Optional[float]
+    payout_per_100: Optional[float]
+    raw: dict = field(default_factory=dict, repr=False)
+
+
 @dataclass
 class PredictionEvent:
     id: str
     title: str
     kind: str
+    contracts: list = field(default_factory=list)
     raw: dict = field(default_factory=dict, repr=False)
 
 
@@ -69,6 +107,7 @@ class ContractPrice:
     ticker: str
     yes_price: Optional[float]
     no_price: Optional[float]
+    chance_pct: Optional[float] = None
     raw: dict = field(default_factory=dict, repr=False)
 
 
@@ -97,10 +136,12 @@ class PredictionsClient:
             )
         if resp.status_code == 404:
             raise PredictionsNotFound(
-                f"Nothing found at {url} -- if this was a contract ticker, it may not be "
-                "listed/live right now (tickers in the docs are illustrative examples, not "
-                "guaranteed to exist). Check --predictions for currently active events, or "
-                "the crypto.com Predictions site, for a real ticker to try."
+                f"Nothing found at {url} -- if this was a contract ticker, it's not a "
+                "real one. Contract tickers are the long `symbol` values nested inside "
+                "each event's `contracts` list (e.g. "
+                "NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO), not short asset "
+                "codes like BTC-YES -- get a real one from --predictions or "
+                "--predictions-search first."
             )
         resp.raise_for_status()
         return resp.json()
@@ -121,34 +162,56 @@ class PredictionsClient:
         return _parse_contract_price(ticker, data)
 
 
+def _parse_contract(row: dict) -> Contract:
+    return Contract(
+        id=str(row.get("id", "")),
+        symbol=row.get("symbol", ""),
+        title=row.get("title", "(untitled)"),
+        status=row.get("status", "?"),
+        yes_price=_to_float(row.get("yes")),
+        no_price=_to_float(row.get("no")),
+        chance_pct=_to_float(row.get("chance")),
+        payout_per_100=_to_float(row.get("payout_per_100")),
+        raw=row,
+    )
+
+
 def _parse_event(row: dict) -> PredictionEvent:
+    contracts = [_parse_contract(c) for c in row.get("contracts", [])]
     return PredictionEvent(
         id=str(row.get("id", "")),
         title=row.get("title", "(untitled)"),
         kind=row.get("kind", "?"),
+        contracts=contracts,
         raw=row,
     )
 
 
 def _parse_contract_price(ticker: str, data: dict) -> ContractPrice:
     # The response may be wrapped in {"data": {...}} like the events
-    # endpoints, or returned flat -- handle both. Field names are a
-    # best-effort guess; see the module docstring.
+    # endpoints, or returned flat -- handle both.
     payload = data.get("data", data) if isinstance(data, dict) else {}
     if not isinstance(payload, dict):
         payload = {}
 
-    yes_price = payload.get("yes_price", payload.get("yes"))
-    no_price = payload.get("no_price", payload.get("no"))
+    # Confirmed field names (same shape as the nested contract objects in
+    # /events): "yes"/"no"/"chance", all numeric-strings.
+    yes_price = _to_float(payload.get("yes"))
+    no_price = _to_float(payload.get("no"))
+    chance_pct = _to_float(payload.get("chance"))
+
     if yes_price is None and no_price is None:
-        # Some binary-market APIs only quote a single "last traded" price
-        # for the YES side and imply NO as its complement.
-        last_price = payload.get("last_price")
+        # Kept as fallbacks in case this specific endpoint's shape ever
+        # differs from the nested contract objects.
+        yes_price = _to_float(payload.get("yes_price"))
+        no_price = _to_float(payload.get("no_price"))
+    if yes_price is None and no_price is None:
+        last_price = _to_float(payload.get("last_price"))
         if last_price is not None:
             yes_price = last_price
-            no_price = round(1.0 - float(last_price), 6)
+            no_price = round(1.0 - last_price, 6)
 
-    return ContractPrice(ticker=ticker, yes_price=yes_price, no_price=no_price, raw=data)
+    return ContractPrice(ticker=ticker, yes_price=yes_price, no_price=no_price, chance_pct=chance_pct, raw=data)
 
 
 def format_events(title: str, events: list[PredictionEvent]) -> str:
@@ -158,6 +221,11 @@ def format_events(title: str, events: list[PredictionEvent]) -> str:
         lines.append("(no events returned)")
     for ev in events:
         lines.append(f"[{ev.kind:<10}] {ev.title}")
+        for c in ev.contracts:
+            yes_str = f"{c.yes_price:.2f}" if c.yes_price is not None else "?"
+            no_str = f"{c.no_price:.2f}" if c.no_price is not None else "?"
+            lines.append(f"    {c.title:<18} YES {yes_str}  NO {no_str}")
+            lines.append(f"      symbol={c.symbol}")
     lines.append(bar)
     return "\n".join(lines)
 
@@ -170,6 +238,8 @@ def format_contract_price(price: ContractPrice) -> str:
         lines.append(f"YES:                 {price.yes_price}  (implied ~{pct})")
     if price.no_price is not None:
         lines.append(f"NO:                  {price.no_price}")
+    if price.chance_pct is not None:
+        lines.append(f"CHANCE:              {price.chance_pct:.2f}%")
     if price.yes_price is None and price.no_price is None:
         lines.append("(price fields not found in response -- see .raw)")
         lines.append(str(price.raw))

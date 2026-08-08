@@ -166,9 +166,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--predictions-contract", metavar="TICKER", default=None,
-        help="Real-time pricing for one prediction contract, e.g. "
-             "--predictions-contract BTC-YES. A YES share's price is the market's "
-             "implied probability of that outcome (0.63 ~= 63%%).",
+        help="Real-time pricing for one prediction contract. TICKER must be a real "
+             "contract `symbol` copied from --predictions/--predictions-search output "
+             "(e.g. NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO) -- short "
+             "asset-style codes like BTC-YES are not real tickers and 404. A YES "
+             "share's price is the market's implied probability of that outcome "
+             "(0.63 ~= 63%%).",
     )
     parser.add_argument(
         "--predictions-limit", type=int, default=20,

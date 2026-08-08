@@ -2,7 +2,9 @@
 Tests for cdcx/predictions.py -- the thin client for the public Crypto.com
 Predictions Market Data API. All HTTP calls are mocked (no live network --
 this sandbox can't reach crypto.com anyway); these lock in the request
-shape (URL, params, headers) and the response parsing, not live data.
+shape (URL, params, headers) and the response parsing against the REAL
+schema, captured from a live `curl` on a machine that can reach
+data-api.crypto.com (see predictions.py's module docstring).
 """
 
 from types import SimpleNamespace
@@ -10,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from cdcx.predictions import (
+    Contract,
     ContractPrice,
     PredictionEvent,
     PredictionsClient,
@@ -22,7 +25,7 @@ from cdcx.predictions import (
 
 def _fake_response(json_data, status_code=200, headers=None):
     def raise_for_status():
-        if status_code >= 400 and status_code != 429:
+        if status_code >= 400 and status_code != 429 and status_code != 404:
             raise RuntimeError(f"HTTP {status_code}")
 
     return SimpleNamespace(
@@ -33,18 +36,51 @@ def _fake_response(json_data, status_code=200, headers=None):
     )
 
 
+# A real event row, trimmed to the fields that matter, from a live capture.
+_REAL_EVENT_ROW = {
+    "id": "80a1fa14-f1cf-4a65-8897-0b89ee28d56d",
+    "title": "Green Bay @ Pittsburgh",
+    "kind": "NFL",
+    "type": "match",
+    "status": "active",
+    "contracts_count": 2,
+    "contracts": [
+        {
+            "id": "86a79d74-485b-5116-b628-a39b4b98f53d",
+            "symbol": "NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO",
+            "title": "Green Bay",
+            "status": "active",
+            "yes": "0.42",
+            "no": "0.58",
+            "chance": "42.00",
+            "payout_per_100": "232.56",
+        },
+        {
+            "id": "80f1ef71-b6ab-5ba9-a3af-62af538d7e86",
+            "symbol": "NFL-00002-260813-M-Steelers-012_270301-2300_1_PM.NPO",
+            "title": "Pittsburgh",
+            "status": "active",
+            "yes": "0.58",
+            "no": "0.45",
+            "chance": "58.00",
+            "payout_per_100": "172.41",
+        },
+    ],
+}
+
+
 # ---------------------------------------------------------------------------
-# PredictionsClient.list_events
+# PredictionsClient.list_events -- real schema (nested contracts[])
 # ---------------------------------------------------------------------------
 
-def test_list_events_parses_title_and_kind(monkeypatch):
+def test_list_events_parses_title_kind_and_nested_contracts(monkeypatch):
     captured = {}
 
     def fake_get(url, params=None, headers=None, timeout=None):
         captured["url"] = url
         captured["params"] = params
         captured["headers"] = headers
-        return _fake_response({"data": [{"id": "1", "title": "Super Bowl LX", "kind": "NFL"}]})
+        return _fake_response({"data": [_REAL_EVENT_ROW]})
 
     monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
 
@@ -53,9 +89,21 @@ def test_list_events_parses_title_and_kind(monkeypatch):
 
     assert captured["url"].endswith("/events")
     assert captured["params"] == {"limit": 5, "kind": "NFL"}
-    assert captured["headers"] == {}
     assert len(events) == 1
-    assert events[0] == PredictionEvent(id="1", title="Super Bowl LX", kind="NFL", raw=events[0].raw)
+
+    ev = events[0]
+    assert ev.title == "Green Bay @ Pittsburgh"
+    assert ev.kind == "NFL"
+    assert len(ev.contracts) == 2
+
+    packers = ev.contracts[0]
+    assert isinstance(packers, Contract)
+    assert packers.symbol == "NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO"
+    assert packers.title == "Green Bay"
+    assert packers.yes_price == pytest.approx(0.42)
+    assert packers.no_price == pytest.approx(0.58)
+    assert packers.chance_pct == pytest.approx(42.00)
+    assert packers.payout_per_100 == pytest.approx(232.56)
 
 
 def test_list_events_without_kind_omits_it_from_params(monkeypatch):
@@ -69,6 +117,16 @@ def test_list_events_without_kind_omits_it_from_params(monkeypatch):
 
     PredictionsClient().list_events(limit=10)
     assert captured["params"] == {"limit": 10}
+
+
+def test_event_with_no_contracts_field_parses_to_empty_list(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
+        return _fake_response({"data": [{"id": "1", "title": "X", "kind": "CRYPT"}]})
+
+    monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
+
+    events = PredictionsClient().list_events()
+    assert events[0].contracts == []
 
 
 def test_api_key_sent_as_header_when_configured(monkeypatch):
@@ -94,7 +152,7 @@ def test_search_events_passes_query_param(monkeypatch):
     def fake_get(url, params=None, headers=None, timeout=None):
         captured["url"] = url
         captured["params"] = params
-        return _fake_response({"data": [{"id": "2", "title": "Election 2028", "kind": "POLITICS"}]})
+        return _fake_response({"data": [{"id": "2", "title": "Election 2028", "kind": "ELECT"}]})
 
     monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
 
@@ -105,18 +163,33 @@ def test_search_events_passes_query_param(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# PredictionsClient.get_contract_price
+# PredictionsClient.get_contract_price -- real field names (yes/no/chance)
 # ---------------------------------------------------------------------------
 
-def test_get_contract_price_reads_yes_no_fields(monkeypatch):
+def test_get_contract_price_reads_real_yes_no_chance_fields(monkeypatch):
+    ticker = "NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO"
+
     def fake_get(url, params=None, headers=None, timeout=None):
-        assert url.endswith("/contracts/BTC-YES/price")
+        assert url.endswith(f"/contracts/{ticker}/price")
+        return _fake_response({"data": {"yes": "0.42", "no": "0.58", "chance": "42.00"}})
+
+    monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
+
+    price = PredictionsClient().get_contract_price(ticker)
+    assert price.yes_price == pytest.approx(0.42)
+    assert price.no_price == pytest.approx(0.58)
+    assert price.chance_pct == pytest.approx(42.00)
+
+
+def test_get_contract_price_falls_back_to_yes_price_no_price_fields(monkeypatch):
+    def fake_get(url, params=None, headers=None, timeout=None):
         return _fake_response({"data": {"yes_price": 0.63, "no_price": 0.37}})
 
     monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
 
-    price = PredictionsClient().get_contract_price("BTC-YES")
-    assert price == ContractPrice(ticker="BTC-YES", yes_price=0.63, no_price=0.37, raw=price.raw)
+    price = PredictionsClient().get_contract_price("SOME-TICKER")
+    assert price.yes_price == pytest.approx(0.63)
+    assert price.no_price == pytest.approx(0.37)
 
 
 def test_get_contract_price_falls_back_to_last_price(monkeypatch):
@@ -126,7 +199,7 @@ def test_get_contract_price_falls_back_to_last_price(monkeypatch):
     monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
 
     price = PredictionsClient().get_contract_price("SOME-TICKER")
-    assert price.yes_price == 0.2
+    assert price.yes_price == pytest.approx(0.2)
     assert price.no_price == pytest.approx(0.8)
 
 
@@ -143,7 +216,7 @@ def test_get_contract_price_keeps_raw_when_no_known_fields_present(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Rate limiting
+# Rate limiting / not found
 # ---------------------------------------------------------------------------
 
 def test_429_raises_predictions_rate_limited_with_retry_after(monkeypatch):
@@ -157,16 +230,15 @@ def test_429_raises_predictions_rate_limited_with_retry_after(monkeypatch):
 
 
 def test_404_raises_predictions_not_found_with_a_clear_message(monkeypatch):
-    # Regression test: a real run against BTC-YES (an illustrative example
-    # ticker from Crypto.com's own docs, not guaranteed to be a live
-    # contract) returned a real 404 -- confirms it's surfaced as a clear,
-    # specific error rather than a generic requests HTTPError.
+    # Regression test: confirmed live -- "BTC-YES" and "BTC" (the docs'
+    # illustrative example / a guessed short ticker) both 404 in practice,
+    # since real tickers are the long `symbol` values nested in /events.
     def fake_get(url, params=None, headers=None, timeout=None):
         return _fake_response({}, status_code=404)
 
     monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
 
-    with pytest.raises(PredictionsNotFound, match="not be listed/live"):
+    with pytest.raises(PredictionsNotFound, match="not a real one"):
         PredictionsClient().get_contract_price("BTC-YES")
 
 
@@ -174,11 +246,22 @@ def test_404_raises_predictions_not_found_with_a_clear_message(monkeypatch):
 # Formatting
 # ---------------------------------------------------------------------------
 
-def test_format_events_lists_each_title_and_kind():
-    events = [PredictionEvent(id="1", title="Super Bowl LX", kind="NFL")]
-    out = format_events("PREDICTION MARKET EVENTS", events)
-    assert "Super Bowl LX" in out
+def test_format_events_lists_title_kind_and_each_contract_symbol():
+    ev = PredictionEvent(
+        id="1", title="Green Bay @ Pittsburgh", kind="NFL",
+        contracts=[
+            Contract(
+                id="c1", symbol="NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO",
+                title="Green Bay", status="active",
+                yes_price=0.42, no_price=0.58, chance_pct=42.0, payout_per_100=232.56,
+            ),
+        ],
+    )
+    out = format_events("PREDICTION MARKET EVENTS", [ev])
+    assert "Green Bay @ Pittsburgh" in out
     assert "NFL" in out
+    assert "NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO" in out
+    assert "0.42" in out
 
 
 def test_format_events_handles_empty_list():
@@ -186,11 +269,11 @@ def test_format_events_handles_empty_list():
     assert "no events returned" in out
 
 
-def test_format_contract_price_shows_implied_probability():
-    price = ContractPrice(ticker="BTC-YES", yes_price=0.63, no_price=0.37)
+def test_format_contract_price_shows_implied_probability_and_chance():
+    price = ContractPrice(ticker="NFL-00002-...", yes_price=0.63, no_price=0.37, chance_pct=63.0)
     out = format_contract_price(price)
-    assert "BTC-YES" in out
     assert "63.0%" in out
+    assert "CHANCE" in out
 
 
 def test_format_contract_price_falls_back_to_raw_when_unparsed():

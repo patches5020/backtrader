@@ -560,9 +560,10 @@ python -m cdcx --predictions --predictions-limit 5
 # full-text search across events
 python -m cdcx --predictions-search "super bowl"
 
-# real-time pricing for one contract -- the implied probability of a
-# specific binary outcome
-python -m cdcx --predictions-contract BTC-YES
+# real-time pricing for one contract -- TICKER must be a real `symbol`
+# copied from --predictions/--predictions-search output (see below),
+# e.g. NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO
+python -m cdcx --predictions-contract NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO
 ```
 
 ```python
@@ -572,24 +573,38 @@ client = PredictionsClient()  # api_key="" works fine for anonymous access
 events = client.list_events(kind="NFL", limit=5)
 print(format_events("PREDICTION MARKET EVENTS", events))
 
-price = client.get_contract_price("BTC-YES")
+# grab a real ticker from one of those events' contracts, then:
+price = client.get_contract_price(events[0].contracts[0].symbol)
 print(format_contract_price(price))
 ```
 
-> **Confirmed against real traffic.** `--predictions`/`--predictions CRYPT`/
-> `--predictions-search` have been run against the live API and correctly
-> parse real events (`title`/`kind`, e.g. `ELECT`, `CRYPT`, `COMPANIES`,
-> `CFB`, `CUL`) -- this project's own sandbox can't reach `crypto.com` at
-> all, so that confirmation happened on a real machine, not in CI here.
-> `--predictions-contract` also correctly surfaces a real 404
-> (`PredictionsNotFound`, not a crash or a misparse) for a ticker that
-> isn't currently listed -- e.g. `BTC-YES`, the docs' own illustrative
-> example, 404s in practice. `_parse_contract_price`'s actual price-field
-> parsing (`yes_price`/`no_price`, falling back to `last_price`) is still
-> unverified against a real 200 response, since no currently-listed ticker
-> has been confirmed yet -- try it against a real one from your
-> `--predictions` output and report back if the fields don't match; the
-> full raw response is always kept on `ContractPrice.raw` either way.
+> **Confirmed against real traffic, schema locked in from a live capture.**
+> `--predictions`/`--predictions CRYPT`/`--predictions-search` have been
+> run against the live API and correctly parse real events -- this
+> project's own sandbox can't reach `crypto.com` at all, so all of this
+> was confirmed on a real machine, not in CI here. A real `/events`
+> response looks like this (trimmed):
+> ```json
+> {"data": [{"id": "...", "title": "Green Bay @ Pittsburgh", "kind": "NFL",
+>   "contracts": [
+>     {"id": "...", "symbol": "NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO",
+>      "title": "Green Bay", "status": "active",
+>      "yes": "0.42", "no": "0.58", "chance": "42.00", "payout_per_100": "232.56"}
+>   ]}]}
+> ```
+> **The important, non-obvious thing this confirmed:** a contract's real
+> identifier is its `symbol` -- a long structured string, not a short
+> asset-style code. `BTC-YES` (the quickstart docs' own illustrative
+> example) and a guessed `BTC` both 404 against the live API -- that's
+> Crypto.com correctly reporting neither is a real, currently-listed
+> contract, not a bug in this client (confirmed via `PredictionsNotFound`
+> printing a clear message instead of a crash or a misparse). Get a real
+> ticker from `--predictions`/`--predictions-search` output first, then
+> pass its `symbol` to `--predictions-contract`. `yes`/`no`/`chance` are
+> parsed correctly (they're numeric-strings, e.g. `"0.42"`) both from each
+> event's nested `contracts[]` and from `--predictions-contract`'s
+> response, which is assumed to share the same field names -- report back
+> if a real contract-price response ever differs.
 
 ## Project layout
 
