@@ -45,6 +45,22 @@ is the quickstart docs' own illustrative example and 404s in practice
 field of an `/events` (or `/events/search`) response. `get_contract_price`
 still takes whatever ticker string you give it; get a real one from
 `--predictions`/`--predictions-search` first.
+
+`GET /contracts/{ticker}/price` itself uses a genuinely different shape
+from the nested event contracts above -- also confirmed against a real,
+pretty-printed response (`curl ... | python3 -m json.tool`, to rule out
+terminal line-wrapping hiding a field):
+
+    {"data": {"symbol": "BTCUSD_260808-2100_6538400_B.NXO",
+               "title": "Above $65,384.00", "status": "active",
+               "bid": "0", "ask": "0.10", "mid": "0.05",
+               "probability": "10.00", "spread": "0.10",
+               "updated_at": "..."}}
+
+Order-book style (`bid`/`ask`/`mid`/`spread`) plus a `probability`
+percentage -- not `yes`/`no`/`chance` like the nested event contracts.
+Both shapes are real and confirmed; they just don't match each other,
+which is a real quirk of this API, not an inconsistency in this client.
 """
 
 from __future__ import annotations
@@ -105,9 +121,13 @@ class PredictionEvent:
 @dataclass
 class ContractPrice:
     ticker: str
-    yes_price: Optional[float]
-    no_price: Optional[float]
-    chance_pct: Optional[float] = None
+    title: str = ""
+    status: str = ""
+    bid: Optional[float] = None
+    ask: Optional[float] = None
+    mid: Optional[float] = None
+    probability_pct: Optional[float] = None
+    spread: Optional[float] = None
     raw: dict = field(default_factory=dict, repr=False)
 
 
@@ -194,24 +214,19 @@ def _parse_contract_price(ticker: str, data: dict) -> ContractPrice:
     if not isinstance(payload, dict):
         payload = {}
 
-    # Confirmed field names (same shape as the nested contract objects in
-    # /events): "yes"/"no"/"chance", all numeric-strings.
-    yes_price = _to_float(payload.get("yes"))
-    no_price = _to_float(payload.get("no"))
-    chance_pct = _to_float(payload.get("chance"))
-
-    if yes_price is None and no_price is None:
-        # Kept as fallbacks in case this specific endpoint's shape ever
-        # differs from the nested contract objects.
-        yes_price = _to_float(payload.get("yes_price"))
-        no_price = _to_float(payload.get("no_price"))
-    if yes_price is None and no_price is None:
-        last_price = _to_float(payload.get("last_price"))
-        if last_price is not None:
-            yes_price = last_price
-            no_price = round(1.0 - last_price, 6)
-
-    return ContractPrice(ticker=ticker, yes_price=yes_price, no_price=no_price, chance_pct=chance_pct, raw=data)
+    # Confirmed field names for this endpoint (order-book style, distinct
+    # from the yes/no/chance shape nested in /events -- see module docstring).
+    return ContractPrice(
+        ticker=ticker,
+        title=payload.get("title", ""),
+        status=payload.get("status", ""),
+        bid=_to_float(payload.get("bid")),
+        ask=_to_float(payload.get("ask")),
+        mid=_to_float(payload.get("mid")),
+        probability_pct=_to_float(payload.get("probability")),
+        spread=_to_float(payload.get("spread")),
+        raw=data,
+    )
 
 
 def format_events(title: str, events: list[PredictionEvent]) -> str:
@@ -233,14 +248,21 @@ def format_events(title: str, events: list[PredictionEvent]) -> str:
 def format_contract_price(price: ContractPrice) -> str:
     bar = "-" * 49
     lines = [bar, f"CONTRACT — {price.ticker}".center(49), bar]
-    if price.yes_price is not None:
-        pct = f"{price.yes_price * 100:.1f}%" if price.yes_price <= 1 else str(price.yes_price)
-        lines.append(f"YES:                 {price.yes_price}  (implied ~{pct})")
-    if price.no_price is not None:
-        lines.append(f"NO:                  {price.no_price}")
-    if price.chance_pct is not None:
-        lines.append(f"CHANCE:              {price.chance_pct:.2f}%")
-    if price.yes_price is None and price.no_price is None:
+    if price.title:
+        lines.append(f"Title:               {price.title}")
+    if price.status:
+        lines.append(f"Status:              {price.status}")
+    if price.probability_pct is not None:
+        lines.append(f"Probability:         {price.probability_pct:.2f}%")
+    if price.bid is not None:
+        lines.append(f"Bid:                 {price.bid}")
+    if price.ask is not None:
+        lines.append(f"Ask:                 {price.ask}")
+    if price.mid is not None:
+        lines.append(f"Mid:                 {price.mid}")
+    if price.spread is not None:
+        lines.append(f"Spread:              {price.spread}")
+    if all(v is None for v in (price.bid, price.ask, price.mid, price.probability_pct)):
         lines.append("(price fields not found in response -- see .raw)")
         lines.append(str(price.raw))
     lines.append(bar)

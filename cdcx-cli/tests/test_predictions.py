@@ -163,44 +163,42 @@ def test_search_events_passes_query_param(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# PredictionsClient.get_contract_price -- real field names (yes/no/chance)
+# PredictionsClient.get_contract_price -- real field names, confirmed via a
+# pretty-printed (curl | python3 -m json.tool) live response: bid/ask/mid/
+# probability/spread. A genuinely different shape from the yes/no/chance
+# fields nested in /events -- see module docstring.
 # ---------------------------------------------------------------------------
 
-def test_get_contract_price_reads_real_yes_no_chance_fields(monkeypatch):
-    ticker = "NFL-00002-260813-M-Packers-011_270301-2300_1_PM.NPO"
+_REAL_CONTRACT_PRICE_ROW = {
+    "symbol": "BTCUSD_260808-2100_6538400_B.NXO",
+    "title": "Above $65,384.00",
+    "status": "active",
+    "bid": "0",
+    "ask": "0.10",
+    "mid": "0.05",
+    "probability": "10.00",
+    "spread": "0.10",
+    "updated_at": "2026-08-08T20:50:51.066+00:00",
+}
+
+
+def test_get_contract_price_reads_real_bid_ask_mid_probability_fields(monkeypatch):
+    ticker = "BTCUSD_260808-2100_6538400_B.NXO"
 
     def fake_get(url, params=None, headers=None, timeout=None):
         assert url.endswith(f"/contracts/{ticker}/price")
-        return _fake_response({"data": {"yes": "0.42", "no": "0.58", "chance": "42.00"}})
+        return _fake_response({"data": _REAL_CONTRACT_PRICE_ROW})
 
     monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
 
     price = PredictionsClient().get_contract_price(ticker)
-    assert price.yes_price == pytest.approx(0.42)
-    assert price.no_price == pytest.approx(0.58)
-    assert price.chance_pct == pytest.approx(42.00)
-
-
-def test_get_contract_price_falls_back_to_yes_price_no_price_fields(monkeypatch):
-    def fake_get(url, params=None, headers=None, timeout=None):
-        return _fake_response({"data": {"yes_price": 0.63, "no_price": 0.37}})
-
-    monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
-
-    price = PredictionsClient().get_contract_price("SOME-TICKER")
-    assert price.yes_price == pytest.approx(0.63)
-    assert price.no_price == pytest.approx(0.37)
-
-
-def test_get_contract_price_falls_back_to_last_price(monkeypatch):
-    def fake_get(url, params=None, headers=None, timeout=None):
-        return _fake_response({"data": {"last_price": 0.2}})
-
-    monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
-
-    price = PredictionsClient().get_contract_price("SOME-TICKER")
-    assert price.yes_price == pytest.approx(0.2)
-    assert price.no_price == pytest.approx(0.8)
+    assert price.title == "Above $65,384.00"
+    assert price.status == "active"
+    assert price.bid == pytest.approx(0.0)
+    assert price.ask == pytest.approx(0.10)
+    assert price.mid == pytest.approx(0.05)
+    assert price.probability_pct == pytest.approx(10.00)
+    assert price.spread == pytest.approx(0.10)
 
 
 def test_get_contract_price_keeps_raw_when_no_known_fields_present(monkeypatch):
@@ -210,8 +208,9 @@ def test_get_contract_price_keeps_raw_when_no_known_fields_present(monkeypatch):
     monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
 
     price = PredictionsClient().get_contract_price("X")
-    assert price.yes_price is None
-    assert price.no_price is None
+    assert price.bid is None
+    assert price.ask is None
+    assert price.probability_pct is None
     assert price.raw == {"data": {"something_else": 1}}
 
 
@@ -269,15 +268,19 @@ def test_format_events_handles_empty_list():
     assert "no events returned" in out
 
 
-def test_format_contract_price_shows_implied_probability_and_chance():
-    price = ContractPrice(ticker="NFL-00002-...", yes_price=0.63, no_price=0.37, chance_pct=63.0)
+def test_format_contract_price_shows_probability_and_order_book_fields():
+    price = ContractPrice(
+        ticker="BTCUSD_260808-2100_6538400_B.NXO", title="Above $65,384.00", status="active",
+        bid=0.0, ask=0.10, mid=0.05, probability_pct=10.00, spread=0.10,
+    )
     out = format_contract_price(price)
-    assert "63.0%" in out
-    assert "CHANCE" in out
+    assert "10.00%" in out
+    assert "Probability" in out
+    assert "Bid" in out and "Ask" in out
 
 
 def test_format_contract_price_falls_back_to_raw_when_unparsed():
-    price = ContractPrice(ticker="X", yes_price=None, no_price=None, raw={"foo": "bar"})
+    price = ContractPrice(ticker="X", raw={"foo": "bar"})
     out = format_contract_price(price)
     assert "raw" in out.lower()
     assert "foo" in out

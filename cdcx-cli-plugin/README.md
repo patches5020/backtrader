@@ -600,11 +600,24 @@ print(format_contract_price(price))
 > contract, not a bug in this client (confirmed via `PredictionsNotFound`
 > printing a clear message instead of a crash or a misparse). Get a real
 > ticker from `--predictions`/`--predictions-search` output first, then
-> pass its `symbol` to `--predictions-contract`. `yes`/`no`/`chance` are
-> parsed correctly (they're numeric-strings, e.g. `"0.42"`) both from each
-> event's nested `contracts[]` and from `--predictions-contract`'s
-> response, which is assumed to share the same field names -- report back
-> if a real contract-price response ever differs.
+> pass its `symbol` to `--predictions-contract`.
+>
+> **`GET /contracts/{ticker}/price` itself turned out to use a genuinely
+> different shape** from the nested event contracts above -- also
+> confirmed live, via a pretty-printed response (`curl ... | python3 -m
+> json.tool`, specifically to rule out a terminal wrapping/hiding a
+> field):
+> ```json
+> {"data": {"symbol": "BTCUSD_260808-2100_6538400_B.NXO",
+>           "title": "Above $65,384.00", "status": "active",
+>           "bid": "0", "ask": "0.10", "mid": "0.05",
+>           "probability": "10.00", "spread": "0.10", "updated_at": "..."}}
+> ```
+> Order-book style (`bid`/`ask`/`mid`/`spread`) plus a `probability`
+> percentage -- not `yes`/`no`/`chance` like the nested event contracts.
+> Both shapes are real; they just don't match each other, which is a
+> genuine quirk of this API. `predictions.py` parses each endpoint against
+> its own confirmed shape rather than assuming they're the same.
 
 ## Project layout
 

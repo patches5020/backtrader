@@ -78,7 +78,7 @@ def test_predictions_contract_dispatches_with_ticker(monkeypatch, capsys):
             pass
 
         def get_contract_price(self, ticker):
-            return ContractPrice(ticker=ticker, yes_price=0.5, no_price=0.5)
+            return ContractPrice(ticker=ticker, ask=0.5, bid=0.5, probability_pct=50.0)
 
     monkeypatch.setattr("cdcx.predictions.PredictionsClient", FakeClient)
 
