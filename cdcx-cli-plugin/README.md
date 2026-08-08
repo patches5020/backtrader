@@ -664,8 +664,6 @@ cdcx-cli/
 │   │   ├── execution.py       # market vs TWAP fill/cost modeling
 │   │   ├── data_loader.py     # load OHLCV from CSV
 │   │   └── synthetic.py       # synthetic multi-regime OHLCV generator
-│   ├── backtrader_strategy.py # bridges the signal engine into a native backtrader.Strategy
-│   ├── backtrader_runner.py   # Cerebro runner for backtrader_strategy.CDCXSignalStrategy
 │   ├── structure_levels.py    # POC/FVG/volume levels + breakout & retest detection (A-H)
 │   ├── structure_strategy.py  # 1W/1D/4H/1H structural entry combos
 │   ├── predictions.py         # Crypto.com Predictions Market Data API client
@@ -689,13 +687,76 @@ cdcx-cli/
     ├── test_confidence_scoring.py
     ├── test_execute_integration.py
     ├── test_engine_regression.py
-    ├── test_backtrader_bridge.py
     ├── test_structure_levels.py
     ├── test_structure_strategy.py
     ├── test_predictions.py
     ├── test_cli_predictions.py
     └── test_cli_structure_combination.py
 ```
+
+## Using as a Claude Code plugin
+
+This repo doubles as a Claude Code plugin marketplace and plugin (see
+`.claude-plugin/marketplace.json` and `.claude-plugin/plugin.json`). Once
+this repo is pushed to `crypto-com/cdcx-cli` on GitHub:
+
+```
+claude plugin marketplace add crypto-com/cdcx-cli
+claude plugin install cdcx-cli@cdcx-cli
+```
+
+This installs a `/cdcx-analyze [symbol] [timeframe] [limit]` slash command
+inside Claude Code that runs the engine and summarizes the result, e.g.:
+
+```
+/cdcx-analyze BTC/USDT 1h 200
+```
+
+### Bundled MCP server registration
+
+`.mcp.json` at the plugin root registers a separate, more full-featured
+`cdcx mcp` server (exposing `market`, `account`, `trade`, `margin`,
+`staking`, `funding`, `fiat`, `otc`, `bot`, and `stream` tools) so it's
+picked up automatically alongside the plugin, instead of needing to be run
+manually in a terminal.
+
+```json
+{
+  "mcpServers": {
+    "cdcx": {
+      "command": "cdcx",
+      "args": ["mcp"],
+      "env": {
+        "CRYPTOCOM_API_KEY": "${CRYPTOCOM_API_KEY}",
+        "CRYPTOCOM_API_SECRET": "${CRYPTOCOM_API_SECRET}"
+      }
+    }
+  }
+}
+```
+
+This assumes the `cdcx` binary is already installed and on `PATH` wherever
+Claude Code runs (`which cdcx` to confirm) -- this is a separate,
+pre-existing authenticated trading tool, distinct from this repo's own
+`python -m cdcx` analysis engine. If `cdcx` isn't on `PATH`, replace
+`"command": "cdcx"` with the full binary path. Set
+`CRYPTOCOM_API_KEY`/`CRYPTOCOM_API_SECRET` as real environment variables
+before launching Claude Code (or hardcode them here, though env vars are
+safer) -- check that tool's own docs for any additional required variables.
+
+To test locally before pushing to GitHub, point at the local folder instead:
+
+```
+claude plugin marketplace add /path/to/cdcx-cli
+claude plugin install cdcx-cli@cdcx-cli
+```
+
+> **Note:** the Claude Code plugin/marketplace manifest format is a newer,
+> evolving part of Claude Code. The `plugin.json` / `marketplace.json` files
+> here are built from best available knowledge but weren't validated against
+> live documentation. If `claude plugin install` reports a schema error,
+> check https://docs.claude.com/en/docs/claude-code/plugins for the current
+> manifest spec and adjust these two files accordingly.
 
 ## Setup
 
@@ -826,58 +887,6 @@ have (synthetic or CSV). It never calls the exchange. Treat results as
 "does the backtesting machinery work," not "does this strategy have a live
 edge" -- synthetic regimes are simplified, and even real historical data
 doesn't guarantee future performance.
-
-## Backtrader integration (cdcx/backtrader_strategy.py, cdcx/backtrader_runner.py)
-
-Since this tool lives inside the `backtrader` repository, `CDCXSignalStrategy`
-bridges the same signal engine, entry checklist, and risk sizing into a
-native `backtrader.Strategy`, so it can be driven through backtrader's own
-`Cerebro` engine, data feeds, brokers, and analyzers instead of (or
-alongside) the standalone offline backtester above.
-
-This is a *bridge*, not a second copy of `cdcx.backtest.engine`'s paper
-trade-manager:
-
-| | `cdcx.backtest.engine` | `cdcx.backtrader_strategy` |
-|---|---|---|
-| Signal generation | `engine.analyze_ohlcv` | same |
-| Entry gating | `entry_checklist.evaluate_entry_checklist` | same |
-| Position sizing | `risk.build_position_plan` | same |
-| Exits | its own trailing / break-even / give-back rules (`trade_manager.py`), replayed against a persisted JSON trade-state file | a backtrader-native bracket order (market entry + ATR stop-loss + TP1 limit) -- no TP2-TP4 laddering or trailing here |
-| Costs / fills | custom fee + fixed-slippage + square-root market-impact model | whatever `Cerebro`'s broker/commission scheme provides |
-
-Use `cdcx.backtest.engine` for the full paper trade-manager simulation this
-project was originally built around; use the backtrader bridge when you
-want CDCX signals inside a normal `Cerebro` run (alongside other
-strategies, analyzers, or broker integrations).
-
-```bash
-# no network/API keys needed -- synthetic multi-regime OHLCV
-python -m cdcx --backtrader --synthetic --symbol BTC/USDT --timeframe 1h --limit 1500
-
-# real candles via ccxt (needs CDCX_API_KEY / CDCX_API_SECRET-less public data)
-python -m cdcx --backtrader --symbol BTC/USDT --timeframe 1h --limit 500 --balance 10000
-```
-
-```python
-import backtrader as bt
-from cdcx.backtrader_strategy import CDCXSignalStrategy
-from cdcx.backtrader_runner import run_backtrader_backtest, format_summary
-from cdcx.backtest.synthetic import generate_ohlcv
-
-data = generate_ohlcv(n_bars=1500, start_price=62000.0, seed=42, timeframe="1h")
-summary = run_backtrader_backtest(data, symbol="BTC/USDT", timeframe="1h", cash=10_000.0)
-print(format_summary(summary))
-
-# or wire CDCXSignalStrategy into your own Cerebro setup directly:
-cerebro = bt.Cerebro()
-cerebro.adddata(bt.feeds.PandasData(dataname=my_dataframe))  # any backtrader-compatible feed
-cerebro.addstrategy(CDCXSignalStrategy, symbol="BTC/USDT")
-cerebro.run()
-```
-
-Install the optional `backtrader` extra (`pip install -e ".[backtrader]"`)
-if using `cdcx-cli` outside this repository.
 
 ## Tests
 

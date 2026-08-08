@@ -1,0 +1,20 @@
+[project]
+name = "cdcx-cli"
+version = "0.1.0"
+description = "CDCX AI trade analysis engine -- EMA/ATR, RSI, Fibonacci, FVG, Volume Profile, and Market Structure combined into a single weighted trade signal."
+requires-python = ">=3.10"
+dependencies = [
+    "ccxt>=4.0.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.28.0",
+]
+
+[project.scripts]
+cdcx-ai = "cdcx.cli:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["cdcx*"]
