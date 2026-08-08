@@ -49,6 +49,13 @@ class PredictionsRateLimited(RuntimeError):
     """Raised on a 429 from the Predictions API -- back off, don't retry immediately."""
 
 
+class PredictionsNotFound(RuntimeError):
+    """Raised on a 404 -- the ticker/kind/query hit a real endpoint that has no data
+    for it right now (e.g. a contract that isn't currently listed), not a bug in this
+    client. Distinct from a generic HTTPError so the CLI can print a clear, specific
+    message instead of raw requests exception text."""
+
+
 @dataclass
 class PredictionEvent:
     id: str
@@ -87,6 +94,13 @@ class PredictionsClient:
             raise PredictionsRateLimited(
                 f"Rate limited by the Crypto.com Predictions API -- retry after {retry_after}s "
                 "(anonymous access is capped at 100 req/min / 50,000 req/day per IP)."
+            )
+        if resp.status_code == 404:
+            raise PredictionsNotFound(
+                f"Nothing found at {url} -- if this was a contract ticker, it may not be "
+                "listed/live right now (tickers in the docs are illustrative examples, not "
+                "guaranteed to exist). Check --predictions for currently active events, or "
+                "the crypto.com Predictions site, for a real ticker to try."
             )
         resp.raise_for_status()
         return resp.json()

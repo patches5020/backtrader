@@ -674,13 +674,13 @@ def _handle_list_trades() -> int:
 
 
 def _handle_predictions_list(kind: str, limit: int) -> int:
-    from .predictions import PredictionsClient, PredictionsRateLimited, format_events
+    from .predictions import PredictionsClient, PredictionsNotFound, PredictionsRateLimited, format_events
 
     client = PredictionsClient(api_key=settings.predictions_api_key)
     kind_filter = None if kind == "__all__" else kind
     try:
         events = client.list_events(kind=kind_filter, limit=limit)
-    except PredictionsRateLimited as exc:
+    except (PredictionsRateLimited, PredictionsNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     except Exception as exc:
@@ -693,12 +693,12 @@ def _handle_predictions_list(kind: str, limit: int) -> int:
 
 
 def _handle_predictions_search(query: str, limit: int) -> int:
-    from .predictions import PredictionsClient, PredictionsRateLimited, format_events
+    from .predictions import PredictionsClient, PredictionsNotFound, PredictionsRateLimited, format_events
 
     client = PredictionsClient(api_key=settings.predictions_api_key)
     try:
         events = client.search_events(query, limit=limit)
-    except PredictionsRateLimited as exc:
+    except (PredictionsRateLimited, PredictionsNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     except Exception as exc:
@@ -710,12 +710,12 @@ def _handle_predictions_search(query: str, limit: int) -> int:
 
 
 def _handle_predictions_contract(ticker: str) -> int:
-    from .predictions import PredictionsClient, PredictionsRateLimited, format_contract_price
+    from .predictions import PredictionsClient, PredictionsNotFound, PredictionsRateLimited, format_contract_price
 
     client = PredictionsClient(api_key=settings.predictions_api_key)
     try:
         price = client.get_contract_price(ticker)
-    except PredictionsRateLimited as exc:
+    except (PredictionsRateLimited, PredictionsNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     except Exception as exc:

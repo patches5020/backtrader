@@ -576,17 +576,20 @@ price = client.get_contract_price("BTC-YES")
 print(format_contract_price(price))
 ```
 
-> **Schema caveat, flagged rather than silently assumed:** this project's
-> sandbox cannot reach `crypto.com` at all (outbound requests to the whole
-> domain are blocked in the environment this was built in), so
-> `_parse_contract_price` was written defensively against the quickstart
-> docs alone rather than a captured real response -- it tries
-> `yes_price`/`no_price` first, falls back to treating a lone `last_price`
-> as the YES side, and always keeps the full response on
-> `ContractPrice.raw` so nothing is lost if the real field names differ.
-> `_parse_event`'s `title`/`kind` fields **are** confirmed directly from
-> the quickstart's own sample code. Verify `_parse_contract_price` against
-> a real response once you can reach the API, and adjust if needed.
+> **Confirmed against real traffic.** `--predictions`/`--predictions CRYPT`/
+> `--predictions-search` have been run against the live API and correctly
+> parse real events (`title`/`kind`, e.g. `ELECT`, `CRYPT`, `COMPANIES`,
+> `CFB`, `CUL`) -- this project's own sandbox can't reach `crypto.com` at
+> all, so that confirmation happened on a real machine, not in CI here.
+> `--predictions-contract` also correctly surfaces a real 404
+> (`PredictionsNotFound`, not a crash or a misparse) for a ticker that
+> isn't currently listed -- e.g. `BTC-YES`, the docs' own illustrative
+> example, 404s in practice. `_parse_contract_price`'s actual price-field
+> parsing (`yes_price`/`no_price`, falling back to `last_price`) is still
+> unverified against a real 200 response, since no currently-listed ticker
+> has been confirmed yet -- try it against a real one from your
+> `--predictions` output and report back if the fields don't match; the
+> full raw response is always kept on `ContractPrice.raw` either way.
 
 ## Project layout
 

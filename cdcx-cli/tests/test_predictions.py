@@ -13,6 +13,7 @@ from cdcx.predictions import (
     ContractPrice,
     PredictionEvent,
     PredictionsClient,
+    PredictionsNotFound,
     PredictionsRateLimited,
     format_contract_price,
     format_events,
@@ -153,6 +154,20 @@ def test_429_raises_predictions_rate_limited_with_retry_after(monkeypatch):
 
     with pytest.raises(PredictionsRateLimited, match="42"):
         PredictionsClient().list_events()
+
+
+def test_404_raises_predictions_not_found_with_a_clear_message(monkeypatch):
+    # Regression test: a real run against BTC-YES (an illustrative example
+    # ticker from Crypto.com's own docs, not guaranteed to be a live
+    # contract) returned a real 404 -- confirms it's surfaced as a clear,
+    # specific error rather than a generic requests HTTPError.
+    def fake_get(url, params=None, headers=None, timeout=None):
+        return _fake_response({}, status_code=404)
+
+    monkeypatch.setattr("cdcx.predictions.requests.get", fake_get)
+
+    with pytest.raises(PredictionsNotFound, match="not be listed/live"):
+        PredictionsClient().get_contract_price("BTC-YES")
 
 
 # ---------------------------------------------------------------------------

@@ -88,6 +88,25 @@ def test_predictions_contract_dispatches_with_ticker(monkeypatch, capsys):
     assert "BTC-YES" in out
 
 
+def test_predictions_contract_404_prints_clear_message_not_raw_http_error(monkeypatch, capsys):
+    from cdcx.predictions import PredictionsNotFound
+
+    class FakeClient:
+        def __init__(self, api_key=""):
+            pass
+
+        def get_contract_price(self, ticker):
+            raise PredictionsNotFound(f"Nothing found ... {ticker} may not be listed/live right now")
+
+    monkeypatch.setattr("cdcx.predictions.PredictionsClient", FakeClient)
+
+    result = cli.main(["--predictions-contract", "BTC-YES"])
+    err = capsys.readouterr().err
+    assert result == 1
+    assert "may not be listed/live" in err
+    assert "Error fetching contract price" not in err  # clear message, not the generic wrapper
+
+
 def test_predictions_rate_limit_error_exits_nonzero(monkeypatch, capsys):
     from cdcx.predictions import PredictionsRateLimited
 
