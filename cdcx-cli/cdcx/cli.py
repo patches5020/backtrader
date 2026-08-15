@@ -122,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
              "(CDCXSignalStrategy: bracket-order entry/stop/TP1, backtrader's own "
              "broker/commission model) instead of the standalone paper trade-manager "
              "simulation in `python -m cdcx.backtest`. Uses --symbol, --timeframe, "
-             "--limit, --balance, --risk-pct.",
+             "--limit, --balance, --risk-pct, --bt-leverage.",
     )
     parser.add_argument(
         "--synthetic", action="store_true",
@@ -132,6 +132,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--commission", type=float, default=0.001,
         help="Backtrader broker commission rate for --backtrader (default: 0.001 = 10 bps).",
+    )
+    parser.add_argument(
+        "--bt-leverage", type=float, default=10.0,
+        help="Backtrader broker leverage for --backtrader (default: 10.0). Position "
+             "sizing is risk-based (like a real leveraged perp account), so a cash-only "
+             "broker (1.0) will silently margin-reject most sized orders -- especially on "
+             "tight-stop timeframes like 1h/4h -- showing 0 trades instead of the real "
+             "signal flow. Does not reflect this exchange's actual per-symbol leverage "
+             "limits (see --leverage); it's purely a backtest-broker setting.",
     )
     parser.add_argument(
         "--plot", action="store_true",
@@ -285,6 +294,7 @@ def _handle_backtrader(args: argparse.Namespace) -> int:
         timeframe=timeframe,
         cash=args.balance or settings.default_account_balance,
         commission=args.commission,
+        leverage=args.bt_leverage,
         risk_pct=args.risk_pct,
         plot=args.plot,
     )

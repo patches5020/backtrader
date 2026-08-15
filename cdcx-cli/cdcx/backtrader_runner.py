@@ -55,6 +55,7 @@ def run_backtrader_backtest(
     timeframe: Optional[str] = None,
     cash: float = 10_000.0,
     commission: float = 0.001,
+    leverage: float = 10.0,
     warmup: int = 120,
     risk_pct: Optional[float] = None,
     min_score_long: float = 60.0,
@@ -66,6 +67,19 @@ def run_backtrader_backtest(
     """
     Run `CDCXSignalStrategy` through a backtrader `Cerebro` over `data`.
     Returns a summary dict; see `format_summary`.
+
+    `leverage` matters more than it looks: `risk.build_position_plan` sizes
+    positions by risk (account_balance * risk_pct / stop_distance), the same
+    way it does for a real leveraged perpetual account -- notional value is
+    expected to run many multiples of account equity. Backtrader's default
+    broker is cash-only (`leverage=1.0`), which requires full notional cash
+    up front, so realistic risk-based sizing (especially on tight-stop
+    timeframes like 1h/4h) gets silently `Margin`-rejected almost every bar:
+    the strategy logs a "setup" line but no matching EXECUTED fill, and the
+    run reports 0 trades / $0 PnL -- which reads as "no signals fired" but
+    actually means "every signal was unaffordable at 1x." Default here to
+    10x so the backtest broker matches the account this strategy is written
+    for; pass 1.0 to intentionally test as a cash/spot account instead.
     """
     symbol = symbol or settings.default_symbol
     timeframe = timeframe or settings.default_timeframe
@@ -74,7 +88,7 @@ def run_backtrader_backtest(
     try:
         cerebro = bt.Cerebro()
         cerebro.broker.setcash(cash)
-        cerebro.broker.setcommission(commission=commission)
+        cerebro.broker.setcommission(commission=commission, leverage=leverage)
 
         feed = bt.feeds.GenericCSVData(
             dataname=csv_path,
