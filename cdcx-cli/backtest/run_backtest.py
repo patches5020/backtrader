@@ -1,16 +1,23 @@
-"""backtrader Cerebro runner for the ATR_EMA_VARIANT1 strategy.
+"""backtrader Cerebro runners for the ATR_EMA_VARIANT1 and TrendRange strategies.
 
 Fetches historical candles from the Crypto.com Exchange public API and
-backtests ATREMAVariant1Strategy against them.
+backtests a strategy against them.
 """
 import backtrader as bt
 
 from api.cryptocom import CryptocomClient
 from strategy.atr_ema_variant1_strategy import ATREMAVariant1Strategy
+from strategy.trend_range_strategy import (
+    TrendRangeStrategy,
+    DEFAULT_RISK_REWARD,
+    DEFAULT_ATR_SL_MULT,
+    DEFAULT_RISK_PCT,
+)
+from indicators.regime import DEFAULT_ADX_LENGTH, DEFAULT_TREND_THRESHOLD
 
 
-def run_backtest(instrument="BTC_USDT", timeframe="1h", count=500, cash=10000.0,
-                  commission=0.001, ema_period=17, atr_period=11, sr_length=2.6, plot=False):
+def _run_cerebro(instrument, timeframe, count, cash, commission, strategy_cls, strategy_kwargs, plot):
+    """Fetch candles, run ``strategy_cls`` through Cerebro, and return a summary dict."""
     client = CryptocomClient()
     df = client.get_candles_dataframe(instrument, timeframe=timeframe, count=count)
     if df.empty:
@@ -23,12 +30,7 @@ def run_backtest(instrument="BTC_USDT", timeframe="1h", count=500, cash=10000.0,
     data = bt.feeds.PandasData(dataname=df)
     cerebro.adddata(data)
 
-    cerebro.addstrategy(
-        ATREMAVariant1Strategy,
-        ema_period=ema_period,
-        atr_period=atr_period,
-        sr_length=sr_length,
-    )
+    cerebro.addstrategy(strategy_cls, **strategy_kwargs)
 
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
     cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe", timeframe=bt.TimeFrame.Days)
@@ -55,6 +57,37 @@ def run_backtest(instrument="BTC_USDT", timeframe="1h", count=500, cash=10000.0,
         cerebro.plot()
 
     return summary
+
+
+def run_backtest(instrument="BTC_USDT", timeframe="1h", count=500, cash=10000.0,
+                  commission=0.001, ema_period=17, atr_period=11, sr_length=2.6, plot=False):
+    """Backtest ATREMAVariant1Strategy: buy on a support touch, close on resistance."""
+    return _run_cerebro(
+        instrument, timeframe, count, cash, commission,
+        strategy_cls=ATREMAVariant1Strategy,
+        strategy_kwargs=dict(ema_period=ema_period, atr_period=atr_period, sr_length=sr_length),
+        plot=plot,
+    )
+
+
+def run_trend_range_backtest(instrument="BTC_USDT", timeframe="1h", count=500, cash=10000.0,
+                              commission=0.001, ema_period=17, atr_period=11, sr_length=2.6,
+                              adx_period=DEFAULT_ADX_LENGTH, adx_threshold=DEFAULT_TREND_THRESHOLD,
+                              risk_reward=DEFAULT_RISK_REWARD, atr_sl_mult=DEFAULT_ATR_SL_MULT,
+                              risk_pct=DEFAULT_RISK_PCT, plot=False):
+    """Backtest TrendRangeStrategy: trend-regime breakouts + range-regime mean
+    reversion, both sized off a single ATR stop-loss / take-profit /
+    risk-to-reward framework."""
+    return _run_cerebro(
+        instrument, timeframe, count, cash, commission,
+        strategy_cls=TrendRangeStrategy,
+        strategy_kwargs=dict(
+            ema_period=ema_period, atr_period=atr_period, sr_length=sr_length,
+            adx_period=adx_period, adx_threshold=adx_threshold,
+            risk_reward=risk_reward, atr_sl_mult=atr_sl_mult, risk_pct=risk_pct,
+        ),
+        plot=plot,
+    )
 
 
 def format_summary(summary):

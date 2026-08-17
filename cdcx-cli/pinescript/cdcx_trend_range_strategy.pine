@@ -1,0 +1,150 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+//@version=5
+// =============================================================================
+// CDCX Trend/Range Adaptive Strategy
+//
+// Pine Script port of cdcx-cli's strategy/trend_range_strategy.py, built to
+// be pasted directly into TradingView's Pine Editor ("side loaded") -- no
+// external service required.
+//
+// Regime logic (same as the Python strategy):
+//   - Trending  (ADX >= adxThreshold): enter long on a breakout above the
+//     EMA+ATR resistance band while price is above the EMA (continuation).
+//   - Ranging   (ADX <  adxThreshold): enter long on a touch of the EMA-ATR
+//     support band (mean reversion).
+//
+// Risk model (identical formulas to _enter_long/_risk_sized_position in the
+// Python strategy):
+//   stopLoss   = entryPrice - atr * atrSlMult
+//   takeProfit = entryPrice + (entryPrice - stopLoss) * riskReward
+//   qty        = (equity * riskPct / 100) / (entryPrice - stopLoss),
+//                capped so it never exceeds what equity can afford.
+//
+// Long-only, single position at a time (pyramiding=0), same as the Python
+// strategy -- this targets spot-style crypto trading, not shorting.
+//
+// Orders are issued with process_orders_on_close=true, so the entry fills
+// at the same bar's close that generated the signal -- matching the
+// close-based entryPrice/stopLoss/takeProfit used for sizing here (the
+// Python strategy makes the same close-based approximation with a Market
+// bracket order; see its module docstring).
+// =============================================================================
+strategy("CDCX Trend/Range Adaptive Strategy", shorttitle = "CDCX-TR", overlay = true,
+     default_qty_type = strategy.fixed, default_qty_value = 1, pyramiding = 0,
+     process_orders_on_close = true, calc_on_every_tick = false,
+     commission_type = strategy.commission.percent, commission_value = 0.1,
+     initial_capital = 10000)
+
+// ---------------------------------------------------------------------------
+// Inputs (defaults mirror indicators/atr_ema_variant1.py, indicators/regime.py,
+// and strategy/trend_range_strategy.py's DEFAULT_* constants)
+// ---------------------------------------------------------------------------
+emaLength    = input.int(17, "EMA Length", group = "EMA / ATR Support-Resistance")
+atrLength    = input.int(11, "ATR Length", group = "EMA / ATR Support-Resistance")
+srMult       = input.float(2.6, "Support/Resistance ATR Multiple", step = 0.1, group = "EMA / ATR Support-Resistance")
+
+adxLength    = input.int(14, "ADX Length", group = "Regime (ADX)")
+adxThreshold = input.float(25.0, "Trend Threshold (ADX >=)", group = "Regime (ADX)")
+
+riskReward   = input.float(2.0, "Risk:Reward (TP multiple of SL distance)", minval = 0.1, step = 0.1, group = "Risk Management")
+atrSlMult    = input.float(1.5, "Stop-Loss ATR Multiple", minval = 0.1, step = 0.1, group = "Risk Management")
+riskPct      = input.float(1.0, "Risk % of Equity per Trade", minval = 0.01, step = 0.1, group = "Risk Management")
+
+showTable    = input.bool(true, "Show info table", group = "Display")
+
+// ---------------------------------------------------------------------------
+// EMA / ATR support & resistance bands (mirrors indicators/support_resistance.py)
+// ---------------------------------------------------------------------------
+ema = ta.ema(close, emaLength)
+atrVal = ta.atr(atrLength)  // Wilder RMA-smoothed ATR, same as ta.rma(ta.tr(true), length)
+
+support    = ema - atrVal * srMult
+resistance = ema + atrVal * srMult
+
+supportHit    = low  <= support
+resistanceHit = high >= resistance
+
+// ---------------------------------------------------------------------------
+// ADX regime classifier (mirrors indicators/regime.py)
+// ---------------------------------------------------------------------------
+[diPlus, diMinus, adx] = ta.dmi(adxLength, adxLength)
+trending = adx >= adxThreshold
+
+// ---------------------------------------------------------------------------
+// Entry signal (mirrors TrendRangeStrategy.next())
+// ---------------------------------------------------------------------------
+trendEntry = trending and resistanceHit and close > ema
+rangeEntry = (not trending) and supportHit
+longEntry  = trendEntry or rangeEntry
+
+// ---------------------------------------------------------------------------
+// Risk model: ATR stop-loss + fixed risk:reward take-profit, sized to risk
+// exactly riskPct% of equity (mirrors _enter_long / _risk_sized_position)
+// ---------------------------------------------------------------------------
+entryPrice  = close
+stopLoss    = entryPrice - atrVal * atrSlMult
+riskPerUnit = entryPrice - stopLoss
+takeProfit  = entryPrice + riskPerUnit * riskReward
+
+riskAmount = strategy.equity * (riskPct / 100.0)
+qtyByRisk  = riskPerUnit > 0 ? riskAmount / riskPerUnit : 0.0
+maxQty     = entryPrice > 0 ? strategy.equity / entryPrice : 0.0
+qty        = math.max(math.min(qtyByRisk, maxQty), 0.0)
+
+canEnter = strategy.position_size == 0 and longEntry and riskPerUnit > 0 and qty > 0
+
+var float activeStop   = na
+var float activeTP     = na
+var string activeRegime = na
+
+if canEnter
+    strategy.entry("Long", strategy.long, qty = qty)
+    strategy.exit("Bracket", from_entry = "Long", stop = stopLoss, limit = takeProfit)
+    activeStop := stopLoss
+    activeTP := takeProfit
+    activeRegime := trending ? "trend" : "range"
+    alert("CDCX-TR long entry: regime=" + activeRegime + " entry=" + str.tostring(entryPrice) +
+         " SL=" + str.tostring(stopLoss) + " TP=" + str.tostring(takeProfit), alert.freq_once_per_bar_close)
+
+// Clear the tracked bracket once the position flattens (either leg filled).
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    activeStop := na
+    activeTP := na
+    activeRegime := na
+
+// ---------------------------------------------------------------------------
+// Plots
+// ---------------------------------------------------------------------------
+plot(ema, "EMA", color = color.new(color.orange, 0))
+plot(support, "Support", color = color.new(color.green, 0))
+plot(resistance, "Resistance", color = color.new(color.red, 0))
+
+plotshape(supportHit, "Support Hit", style = shape.xcross, location = location.belowbar,
+     color = color.new(color.lime, 0), size = size.tiny)
+plotshape(resistanceHit, "Resistance Hit", style = shape.xcross, location = location.abovebar,
+     color = color.new(color.red, 0), size = size.tiny)
+
+plot(activeStop, "Active Stop-Loss", color = color.new(color.red, 0), style = plot.style_linebr, linewidth = 1)
+plot(activeTP, "Active Take-Profit", color = color.new(color.green, 0), style = plot.style_linebr, linewidth = 1)
+
+bgcolor(trending ? color.new(color.purple, 92) : color.new(color.gray, 92), title = "Regime")
+
+// ---------------------------------------------------------------------------
+// Info table
+// ---------------------------------------------------------------------------
+if showTable
+    var table infoTable = table.new(position.top_right, 2, 6, border_width = 1)
+    if barstate.islast
+        table.cell(infoTable, 0, 0, "Regime", bgcolor = color.gray)
+        table.cell(infoTable, 1, 0, trending ? "Trend" : "Range", bgcolor = color.gray)
+        table.cell(infoTable, 0, 1, "ADX", bgcolor = color.gray)
+        table.cell(infoTable, 1, 1, str.tostring(adx, "#.##"), bgcolor = color.gray)
+        table.cell(infoTable, 0, 2, "EMA", bgcolor = color.gray)
+        table.cell(infoTable, 1, 2, str.tostring(ema, "#.####"), bgcolor = color.gray)
+        table.cell(infoTable, 0, 3, "Support / Resistance", bgcolor = color.gray)
+        table.cell(infoTable, 1, 3, str.tostring(support, "#.####") + " / " + str.tostring(resistance, "#.####"), bgcolor = color.gray)
+        table.cell(infoTable, 0, 4, "Risk : Reward", bgcolor = color.gray)
+        table.cell(infoTable, 1, 4, "1 : " + str.tostring(riskReward, "#.##"), bgcolor = color.gray)
+        table.cell(infoTable, 0, 5, "Active SL / TP", bgcolor = color.gray)
+        table.cell(infoTable, 1, 5, na(activeStop) ? "-" : str.tostring(activeStop, "#.####") + " / " + str.tostring(activeTP, "#.####"), bgcolor = color.gray)
