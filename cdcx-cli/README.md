@@ -14,15 +14,17 @@ cdcx-cli/
 │   ├── atr.py
 │   ├── support_resistance.py
 │   ├── atr_ema_variant1.py
+│   ├── regime.py         Wilder ADX trend/range classifier
 │   ├── fibonacci.py
 │   ├── fixed_volume_profile.py
 │   ├── anchored_volume_profile.py
 │   ├── fair_value_gap.py
 │   ├── order_blocks.py
 │   └── liquidity.py
-├── strategy/             backtrader Strategy built on ATR_EMA_VARIANT1
-│   └── atr_ema_variant1_strategy.py
-├── backtest/             backtrader Cerebro runner
+├── strategy/             backtrader Strategies
+│   ├── atr_ema_variant1_strategy.py
+│   └── trend_range_strategy.py   regime-adaptive entries + ATR SL/TP/R:R
+├── backtest/             backtrader Cerebro runners
 │   └── run_backtest.py
 ├── scanner/              Multi-symbol support/resistance scanner
 │   └── sr_scanner.py
@@ -47,6 +49,35 @@ pandas/numpy function (for the scanner and CLI, no backtrader needed) and a
 flowchart. They're functional but intentionally simpler than the core
 ATR/EMA indicator — good building blocks, not final production logic.
 
+`regime.py` is a Wilder ADX port (`plus_di`/`minus_di`/`adx`) used to label
+each bar as **trending** (`adx >= trend_threshold`, default `25`) or
+**ranging** (`adx < trend_threshold`), same pandas-fn + `backtrader.Indicator`
+split as the other indicators.
+
+## Strategies
+
+- **`atr_ema_variant1_strategy.ATREMAVariant1Strategy`** — the original
+  strategy: buy on a support-band touch, close on a resistance-band touch.
+
+- **`trend_range_strategy.TrendRangeStrategy`** — a regime-adaptive strategy
+  that reuses the same EMA/ATR support-resistance bands and adds an ADX
+  regime filter, an ATR-based stop-loss, and a fixed risk-to-reward
+  take-profit:
+
+  | Market regime (ADX)          | Entry                                              |
+  |-------------------------------|-----------------------------------------------------|
+  | Trending (`adx >= threshold`) | Breakout above the resistance band while `close > ema` (trend continuation) |
+  | Ranging (`adx < threshold`)   | Touch of the support band (mean reversion), same trigger as the base strategy |
+
+  Every entry is submitted as a single OCO bracket order
+  (`Strategy.buy_bracket`) so risk is fixed at order time:
+
+  - `stop_loss   = entry - atr * atr_sl_mult`
+  - `take_profit = entry + (entry - stop_loss) * risk_reward`
+  - position size is chosen so a stop-out risks exactly `risk_pct`% of
+    account equity (risk-based position sizing), never more than cash on
+    hand allows.
+
 ## Usage
 
 ```bash
@@ -63,6 +94,11 @@ python cli.py scan --instruments BTC_USDT,ETH_USDT,SOL_USDT --timeframe 1h
 
 # backtest the ATR_EMA_VARIANT1 strategy with backtrader's Cerebro engine
 python cli.py backtest --instrument BTC_USDT --timeframe 1h --count 500 --cash 10000
+
+# backtest the regime-adaptive strategy: trend breakouts + range mean-reversion,
+# ATR stop-loss/take-profit sized to a 1:2 risk-to-reward ratio, 1% equity risk/trade
+python cli.py trend-range --instrument BTC_USDT --timeframe 1h --count 500 \
+    --risk-reward 2.0 --atr-sl-mult 1.5 --risk-pct 1.0
 ```
 
 ## Notes

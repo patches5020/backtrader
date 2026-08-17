@@ -15,6 +15,8 @@ for path in (_THIS_DIR, _REPO_ROOT):
 
 from api.cryptocom import CryptocomClient, CryptocomAPIError
 from indicators.atr_ema_variant1 import compute_atr_ema_variant1, DEFAULT_EMA_LENGTH, DEFAULT_ATR_LENGTH, DEFAULT_SR_LENGTH
+from indicators.regime import DEFAULT_ADX_LENGTH, DEFAULT_TREND_THRESHOLD
+from strategy.trend_range_strategy import DEFAULT_RISK_REWARD, DEFAULT_ATR_SL_MULT, DEFAULT_RISK_PCT
 
 
 def add_indicator_args(parser):
@@ -89,6 +91,21 @@ def cmd_backtest(args):
     return 0
 
 
+def cmd_trend_range(args):
+    from backtest.run_backtest import run_trend_range_backtest, format_summary
+
+    summary = run_trend_range_backtest(
+        instrument=args.instrument, timeframe=args.timeframe, count=args.count,
+        cash=args.cash, commission=args.commission,
+        ema_period=args.ema_length, atr_period=args.atr_length, sr_length=args.sr_length,
+        adx_period=args.adx_length, adx_threshold=args.adx_threshold,
+        risk_reward=args.risk_reward, atr_sl_mult=args.atr_sl_mult, risk_pct=args.risk_pct,
+        plot=args.plot,
+    )
+    print(format_summary(summary))
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="cdcx-cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -117,6 +134,27 @@ def build_parser():
     p_backtest.add_argument("--commission", type=float, default=0.001)
     p_backtest.add_argument("--plot", action="store_true")
     p_backtest.set_defaults(func=cmd_backtest)
+
+    p_trend_range = subparsers.add_parser(
+        "trend-range",
+        help="Backtest the regime-adaptive strategy (trend breakouts + range mean-reversion, "
+             "ATR stop-loss/take-profit sized to a fixed risk-to-reward ratio)",
+    )
+    add_indicator_args(p_trend_range)
+    p_trend_range.add_argument("--adx-length", type=int, default=DEFAULT_ADX_LENGTH,
+                                help="ADX lookback used for trend/range classification")
+    p_trend_range.add_argument("--adx-threshold", type=float, default=DEFAULT_TREND_THRESHOLD,
+                                help="ADX value at/above which the market is classified as trending")
+    p_trend_range.add_argument("--risk-reward", type=float, default=DEFAULT_RISK_REWARD,
+                                help="Take-profit distance as a multiple of the stop-loss distance")
+    p_trend_range.add_argument("--atr-sl-mult", type=float, default=DEFAULT_ATR_SL_MULT,
+                                help="Stop-loss distance from entry, in multiples of ATR")
+    p_trend_range.add_argument("--risk-pct", type=float, default=DEFAULT_RISK_PCT,
+                                help="Percent of account equity risked per trade (position sizing)")
+    p_trend_range.add_argument("--cash", type=float, default=10000.0)
+    p_trend_range.add_argument("--commission", type=float, default=0.001)
+    p_trend_range.add_argument("--plot", action="store_true")
+    p_trend_range.set_defaults(func=cmd_trend_range)
 
     return parser
 
