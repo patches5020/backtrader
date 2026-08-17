@@ -32,6 +32,8 @@ cdcx-cli/
 │   └── atr_ema_variant1_chart.py
 ├── integrations/         Third-party integrations
 │   └── tvremix_mcp.py    tvremix.ai MCP (Model Context Protocol) client
+├── pinescript/           TradingView Pine Script port(s)
+│   └── cdcx_trend_range_strategy.pine
 ├── tests/                Unit tests (pandas indicator math + API parsing)
 ├── cli.py                Entry point (run / scan / backtest / chart / mcp)
 └── requirements.txt
@@ -102,6 +104,36 @@ python cli.py mcp list-tools --url https://tvremix.xyz/api/mcp/v1 --api-key "$TV
 # ...or via env vars: TVREMIX_MCP_URL, TVREMIX_API_KEY
 ```
 
+> tvremix.ai's MCP server turned out to require a paid subscription to
+> access, which is why `pinescript/cdcx_trend_range_strategy.pine` below
+> exists — it runs the same strategy natively inside TradingView with no
+> external service (or subscription) required at all.
+
+## Pine Script (TradingView) port
+
+`pinescript/cdcx_trend_range_strategy.pine` is a Pine Script v5 port of
+`strategy/trend_range_strategy.py` — same EMA/ATR support-resistance bands,
+same ADX regime filter, same ATR stop-loss / fixed risk:reward take-profit /
+equity-risk-based position sizing, same long-only single-position design.
+It's meant to be "side-loaded": pasted straight into TradingView's Pine
+Editor and run there, independent of cdcx-cli or any external API.
+
+**To use it:**
+1. On [tradingview.com](https://www.tradingview.com), open any chart →
+   **Pine Editor** (bottom panel) → **Open** → **New blank script**.
+2. Paste the contents of `pinescript/cdcx_trend_range_strategy.pine`.
+3. **Add to Chart**. Inputs are grouped (EMA/ATR bands, ADX regime, risk
+   management) and default to the same values as the Python
+   `DEFAULT_*` constants.
+4. Open **Strategy Tester** to backtest, or set a TradingView alert on
+   "Any alert() function call" to get notified on entries (the script
+   fires `alert(...)` with the regime, entry, SL, and TP on every trade).
+
+Note the entry/SL/TP are computed from the signal bar's `close` (the script
+runs with `process_orders_on_close = true`), the same close-based
+approximation the Python strategy makes with its Market bracket order — see
+that module's docstring for the same caveat.
+
 ## Usage
 
 ```bash
@@ -146,3 +178,10 @@ python cli.py trend-range --instrument BTC_USDT --timeframe 1h --count 500 \
   all is unknown. Run `python cli.py mcp list-tools` once in your own
   environment first — to confirm connectivity/auth and see the real tool
   names/schemas — before calling `mcp call` against it.
+- `pinescript/cdcx_trend_range_strategy.pine` was written against the
+  documented Pine Script v5 language reference and mirrors the
+  already-tested Python strategy's logic line-for-line, but this
+  environment has no TradingView account/browser to actually compile and
+  run it in the Pine Editor. Paste it in and check the **Pine Editor**'s
+  log/error panel before trusting it — if TradingView flags a syntax
+  issue, paste the error back and it can be fixed directly.
