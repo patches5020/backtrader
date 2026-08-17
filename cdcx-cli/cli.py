@@ -4,6 +4,7 @@
 Subcommands: run, chart, scan, backtest. See README.md for examples.
 """
 import argparse
+import json
 import os
 import sys
 
@@ -17,6 +18,7 @@ from api.cryptocom import CryptocomClient, CryptocomAPIError
 from indicators.atr_ema_variant1 import compute_atr_ema_variant1, DEFAULT_EMA_LENGTH, DEFAULT_ATR_LENGTH, DEFAULT_SR_LENGTH
 from indicators.regime import DEFAULT_ADX_LENGTH, DEFAULT_TREND_THRESHOLD
 from strategy.trend_range_strategy import DEFAULT_RISK_REWARD, DEFAULT_ATR_SL_MULT, DEFAULT_RISK_PCT
+from integrations.tvremix_mcp import MCPClient, MCPError, DEFAULT_MCP_URL
 
 
 def add_indicator_args(parser):
@@ -106,6 +108,43 @@ def cmd_trend_range(args):
     return 0
 
 
+def _mcp_client_from_args(args):
+    return MCPClient(url=args.url, api_key=args.api_key)
+
+
+def cmd_mcp_list_tools(args):
+    client = _mcp_client_from_args(args)
+    tools = client.list_tools()
+    if not tools:
+        print("No tools reported by the MCP server.")
+        return 0
+    for tool in tools:
+        name = tool.get("name", "?")
+        description = tool.get("description", "")
+        print(f"- {name}: {description}")
+    return 0
+
+
+def cmd_mcp_call(args):
+    try:
+        arguments = json.loads(args.args) if args.args else {}
+    except json.JSONDecodeError as exc:
+        print(f"--args must be valid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    client = _mcp_client_from_args(args)
+    content = client.call_tool(args.tool, arguments)
+    print(json.dumps(content, indent=2, default=str))
+    return 0
+
+
+def add_mcp_connection_args(parser):
+    parser.add_argument("--url", default=os.environ.get("TVREMIX_MCP_URL", DEFAULT_MCP_URL),
+                         help="MCP server endpoint (env: TVREMIX_MCP_URL)")
+    parser.add_argument("--api-key", default=os.environ.get("TVREMIX_API_KEY"),
+                         help="Bearer token, if the server requires auth (env: TVREMIX_API_KEY)")
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="cdcx-cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -156,6 +195,19 @@ def build_parser():
     p_trend_range.add_argument("--plot", action="store_true")
     p_trend_range.set_defaults(func=cmd_trend_range)
 
+    p_mcp = subparsers.add_parser("mcp", help="Talk to the tvremix.ai MCP (Model Context Protocol) server")
+    mcp_subparsers = p_mcp.add_subparsers(dest="mcp_command", required=True)
+
+    p_mcp_list = mcp_subparsers.add_parser("list-tools", help="List the tools the MCP server exposes")
+    add_mcp_connection_args(p_mcp_list)
+    p_mcp_list.set_defaults(func=cmd_mcp_list_tools)
+
+    p_mcp_call = mcp_subparsers.add_parser("call", help="Call a tool on the MCP server")
+    add_mcp_connection_args(p_mcp_call)
+    p_mcp_call.add_argument("--tool", required=True, help="Tool name, as reported by 'mcp list-tools'")
+    p_mcp_call.add_argument("--args", default=None, help="Tool arguments as a JSON object, e.g. '{\"symbol\": \"BTCUSD\"}'")
+    p_mcp_call.set_defaults(func=cmd_mcp_call)
+
     return parser
 
 
@@ -166,6 +218,9 @@ def main(argv=None):
         return args.func(args)
     except CryptocomAPIError as exc:
         print(f"Crypto.com API error: {exc}", file=sys.stderr)
+        return 1
+    except MCPError as exc:
+        print(f"tvremix MCP error: {exc}", file=sys.stderr)
         return 1
 
 

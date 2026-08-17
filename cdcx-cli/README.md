@@ -30,8 +30,10 @@ cdcx-cli/
 │   └── sr_scanner.py
 ├── charts/               Matplotlib chart matching the Pine Script plots
 │   └── atr_ema_variant1_chart.py
+├── integrations/         Third-party integrations
+│   └── tvremix_mcp.py    tvremix.ai MCP (Model Context Protocol) client
 ├── tests/                Unit tests (pandas indicator math + API parsing)
-├── cli.py                Entry point (run / scan / backtest / chart)
+├── cli.py                Entry point (run / scan / backtest / chart / mcp)
 └── requirements.txt
 ```
 
@@ -78,6 +80,28 @@ split as the other indicators.
     account equity (risk-based position sizing), never more than cash on
     hand allows.
 
+## tvremix.ai integration
+
+`integrations/tvremix_mcp.py` is a client for tvremix.ai's ("TradingView
+Remix: AI Chart Copilot") MCP server at `https://tvremix.xyz/api/mcp/v1`.
+MCP (Model Context Protocol) is a JSON-RPC 2.0 protocol, not a plain REST
+API, so `MCPClient` handles the `initialize` handshake, session-id header,
+and `tools/list`/`tools/call` calls per the spec's Streamable HTTP
+transport — the CLI then exposes whatever tools the server reports rather
+than hard-coding a specific tool contract:
+
+```bash
+# discover what tvremix.ai exposes
+python cli.py mcp list-tools
+
+# call a specific tool with JSON arguments
+python cli.py mcp call --tool chart_analyze --args '{"symbol": "BTCUSD"}'
+
+# point at a different endpoint / pass an API key, if the server requires one
+python cli.py mcp list-tools --url https://tvremix.xyz/api/mcp/v1 --api-key "$TVREMIX_API_KEY"
+# ...or via env vars: TVREMIX_MCP_URL, TVREMIX_API_KEY
+```
+
 ## Usage
 
 ```bash
@@ -114,3 +138,11 @@ python cli.py trend-range --instrument BTC_USDT --timeframe 1h --count 500 \
   environment this was written in (outbound access to `api.crypto.com` was
   blocked). Run `python cli.py run ...` once against the real API in your own
   environment to confirm connectivity before relying on it.
+- Same caveat for `integrations/tvremix_mcp.py`: outbound access to
+  `tvremix.xyz` was blocked from the environment this was written in, so
+  the client is built strictly against the public MCP spec and unit-tested
+  against a fake transport, not the live server. It has not been confirmed
+  to work against the real endpoint, and whether it requires an API key at
+  all is unknown. Run `python cli.py mcp list-tools` once in your own
+  environment first — to confirm connectivity/auth and see the real tool
+  names/schemas — before calling `mcp call` against it.
