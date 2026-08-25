@@ -386,7 +386,9 @@ def _handle_trending_path(
     signals_by_tf, confluence, atr_series, adx_value, news_imminent,
     live, instrument_name_override,
 ) -> int:
-    checklist = evaluate_entry_checklist(entry_signal, direction, risk_pct=effective_risk_pct, symbol=symbol)
+    checklist = evaluate_entry_checklist(
+        entry_signal, direction, risk_pct=effective_risk_pct, symbol=symbol, atr_series=atr_series,
+    )
     print()
     print(format_checklist(checklist))
 
@@ -447,6 +449,15 @@ def _handle_ranging_path(
     )
     print()
     print(ranging_strategy.format_ranging_setup(setup))
+
+    # Advisory only -- Mode 2 (rotation) expects a flat ATR read; this is
+    # just an early heads-up if ATR is already turning (e.g. toward
+    # expansion), which would mean the range may be about to break rather
+    # than hold. It does not gate the ranging setup itself.
+    from .indicators import atr_state
+
+    atr_transition = atr_state.detect_transition(atr_state.classify_atr_series(atr_series))
+    print(atr_state.format_atr_transition(atr_transition))
 
     if not setup.valid:
         print("\nNo qualifying ranging setup -- no trade planned.")

@@ -19,6 +19,16 @@ Checklist (mirrors the specified execution rules):
     - Risk per trade <= 2% of account equity
     - No existing open position on the same symbol
 
+Optional, advisory:
+    - ATR transition timing (atr_state.py) -- reads whether ATR just moved
+      from contraction to expansion, or is in a confirmed "second expansion"
+      after a pullback (the higher-quality trigger vs. chasing the first
+      move). Only evaluated when the caller passes `atr_series`; when
+      omitted this item is skipped entirely, so existing callers/tests are
+      unaffected. Advisory items never gate `all_passed` -- they inform,
+      they don't block a setup that already confirms on every required
+      component.
+
 Position sizing itself (1.5x ATR stop distance) is handled by risk.py; this
 module only gates whether to proceed, given a TradeSignal for the entry
 timeframe.
@@ -27,7 +37,7 @@ timeframe.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Sequence
 
 from . import trade_manager
 
@@ -39,6 +49,7 @@ class ChecklistItem:
     name: str
     passed: bool
     detail: str
+    advisory: bool = False  # informational only -- excluded from all_passed
 
 
 @dataclass
@@ -46,8 +57,8 @@ class ChecklistResult:
     items: list[ChecklistItem] = field(default_factory=list)
     all_passed: bool = False
 
-    def add(self, name: str, passed: bool, detail: str) -> None:
-        self.items.append(ChecklistItem(name, passed, detail))
+    def add(self, name: str, passed: bool, detail: str, advisory: bool = False) -> None:
+        self.items.append(ChecklistItem(name, passed, detail, advisory))
 
 
 def _confirms(score: float, direction: str) -> bool:
@@ -60,10 +71,14 @@ def _confirms(score: float, direction: str) -> bool:
 
 def evaluate_entry_checklist(
     signal, direction: str, risk_pct: float = MAX_RISK_PCT, symbol: Optional[str] = None,
+    atr_series: Optional[Sequence[float]] = None,
 ) -> ChecklistResult:
     """
     `signal` is the TradeSignal for the entry timeframe (see engine.py).
     `direction` is "long" or "short" (from confluence.ConfluenceResult).
+    `atr_series` is optional: the entry timeframe's raw ATR series. When
+    provided, adds the advisory ATR-transition timing item (see module
+    docstring); omit it to keep the checklist exactly as before.
     """
     result = ChecklistResult()
     scores = signal.scores
@@ -108,14 +123,29 @@ def evaluate_entry_checklist(
         detail = "no open position" if no_existing_ok else f"open trade {existing.id[:8]} already exists"
         result.add("No existing position in this symbol", no_existing_ok, detail)
 
-    result.all_passed = all(item.passed for item in result.items)
+    if atr_series is not None:
+        from .indicators import atr_state
+
+        states = atr_state.classify_atr_series(atr_series)
+        transition = atr_state.detect_transition(states)
+        result.add(
+            "ATR transition timing (advisory)",
+            transition.is_trigger,
+            transition.detail,
+            advisory=True,
+        )
+
+    result.all_passed = all(item.passed for item in result.items if not item.advisory)
     return result
 
 
 def format_checklist(result: ChecklistResult) -> str:
     lines = ["-" * 49, "ENTRY CHECKLIST".center(49), "-" * 49]
     for item in result.items:
-        mark = "PASS" if item.passed else "FAIL"
+        if item.advisory:
+            mark = "INFO" if item.passed else "NOTE"
+        else:
+            mark = "PASS" if item.passed else "FAIL"
         lines.append(f"[{mark}] {item.name} -- {item.detail}")
     lines.append("-" * 49)
     lines.append("ALL CONDITIONS MET -- proceeding" if result.all_passed else "NOT ALL CONDITIONS MET -- no trade")

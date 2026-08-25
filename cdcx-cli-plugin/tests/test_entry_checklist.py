@@ -69,3 +69,31 @@ def test_existing_open_position_fails_checklist():
     signal = _all_confirming_long_signal()
     result = evaluate_entry_checklist(signal, "long", risk_pct=2.0, symbol="BTC/USDT")
     assert result.all_passed is False
+
+
+# ---------------------------------------------------------------------------
+# atr_series: optional, advisory ATR-transition item (see atr_state.py)
+# ---------------------------------------------------------------------------
+
+def test_atr_series_omitted_keeps_checklist_unchanged():
+    signal = _all_confirming_long_signal()
+    result = evaluate_entry_checklist(signal, "long", risk_pct=2.0, symbol="BTC/USDT")
+    assert all(not item.advisory for item in result.items)
+
+
+def test_atr_series_contraction_to_expansion_is_advisory_pass_but_not_required():
+    signal = _all_confirming_long_signal()
+    atr_series = [1.0] * 10 + [0.5] * 10 + [1.0]  # contraction settles, then a fresh expansion bar
+    result = evaluate_entry_checklist(signal, "long", risk_pct=2.0, symbol="BTC/USDT", atr_series=atr_series)
+    advisory_items = [item for item in result.items if item.advisory]
+    assert len(advisory_items) == 1
+    assert result.all_passed is True  # advisory item doesn't gate an otherwise-passing checklist
+
+
+def test_atr_series_no_trigger_does_not_fail_checklist():
+    signal = _all_confirming_long_signal()
+    atr_series = [1.0] * 15  # flat throughout -- no contraction->expansion or second-expansion trigger
+    result = evaluate_entry_checklist(signal, "long", risk_pct=2.0, symbol="BTC/USDT", atr_series=atr_series)
+    advisory_items = [item for item in result.items if item.advisory]
+    assert advisory_items[0].passed is False
+    assert result.all_passed is True  # still passes -- advisory item is informational only
