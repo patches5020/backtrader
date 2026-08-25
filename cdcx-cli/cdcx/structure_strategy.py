@@ -31,6 +31,13 @@ would support one trivially):
 bullish side of the weekly POC, SHORT only on the bearish side -- matching
 "major structure" as context the lower timeframes shouldn't fight, not a
 pass/fail checklist item of its own.
+
+The 4H ATR-transition read (atr_state.py) is reported the same way: a
+header line visible on every attempt, not a fourth gate. A breakout/retest
+or FVG-confluence setup that already qualifies on structure + volume + 1H
+confirmation isn't rejected just because the ATR sequence doesn't happen to
+show a fresh contraction->expansion or second-expansion read -- it's just
+one more piece of context on whether this is fresh momentum or a chase.
 """
 
 from __future__ import annotations
@@ -39,7 +46,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional, Sequence
 
 from . import structure_levels
-from .indicators import atr_ema_variant1, candlestick_patterns
+from .indicators import atr_ema_variant1, atr_state, candlestick_patterns
 
 Direction = Literal["long", "short"]
 
@@ -179,7 +186,11 @@ def evaluate_structure_setup(
     should call the `_try_*` helpers directly instead."""
     price = h4_closes[-1]
     bias = weekly_bias(w1, price)
-    header = [f"1W major structure: price is {bias} of the weekly POC ({w1.poc:.6f})."]
+    atr_transition = atr_state.analyze(h4_highs, h4_lows, h4_closes)
+    header = [
+        f"1W major structure: price is {bias} of the weekly POC ({w1.poc:.6f}).",
+        f"4H {atr_state.format_atr_transition(atr_transition)}",
+    ]
 
     last: Optional[StructureSetup] = None
 

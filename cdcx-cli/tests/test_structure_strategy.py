@@ -229,3 +229,21 @@ def test_evaluate_structure_setup_bearish_bias_blocks_long_triggers():
     )
     # long breakout_retest setup exists on h4, but bearish 1W bias must block it
     assert result.direction is None or result.direction == "short"
+
+
+def test_evaluate_structure_setup_includes_atr_transition_header_line():
+    # Same fixture as the passing long case -- the ATR-transition read is
+    # advisory context, present in the header regardless of outcome.
+    w1 = _map(poc=90.0, resistance=120.0, support=80.0)
+    d1 = _map(poc=99.5, resistance=101.0, support=99.0)
+    h4_highs, h4_lows, h4_closes, h4_volumes = _breakout_retest_h4("up")
+    h4 = _map(poc=99.0, resistance=101.0, support=99.0, fvgs=[])
+    h1_opens = [100, 98]
+    h1_closes = [98, 103]
+    h1_highs = [100.5, 103.5]
+    h1_lows = [97.5, 97.8]
+
+    result = evaluate_structure_setup(
+        w1, d1, h4, h4_highs, h4_lows, h4_closes, h4_volumes, h1_highs, h1_lows, h1_opens, h1_closes,
+    )
+    assert any("ATR TIMING" in r for r in result.reasons)
