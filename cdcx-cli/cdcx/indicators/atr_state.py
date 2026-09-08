@@ -26,6 +26,27 @@ of states can be read like a volatility gear-shift:
         caution than a confirmed second expansion, without being told
         outright not to trade it.
 
+    Contraction -> Flat -> Expansion   ("compression release")
+        Compression that bridges through a flat stretch before releasing
+        into expansion, rather than flipping straight from contraction to
+        expansion on a single bar. Same family as the plain
+        contraction_to_expansion trigger (both are "prepare -> confirmed"),
+        just recognized across a wider cooldown window -- flagged
+        separately (`compression_release`) so the detail message can name
+        the actual bridging shape instead of collapsing it into a bare
+        contraction_to_expansion read.
+
+    Expansion -> Contraction   (no re-expansion yet)
+        Momentum cooling off / likely pullback in progress. Purely
+        informational (`expansion_to_contraction`, not a trigger) -- the
+        natural precursor to a later compression_release or second_expansion
+        read, not an entry signal on its own.
+
+    Expansion -> Flat   (no re-expansion yet)
+        Possible exhaustion / consolidation right after a move, distinct
+        from a cooldown that's visibly compressing. Purely informational
+        (`expansion_to_flat`, not a trigger) for the same reason as above.
+
 Deliberately duplicates score_atr_expansion's +-10% expansion/contraction
 thresholds rather than importing them, so this module can classify an
 entire series in one pass without changing that function's existing
@@ -52,12 +73,13 @@ CONTRACTION_THRESHOLD_PCT = -0.10
 
 DEFAULT_LOOKBACK = 10
 
-TRIGGER_KINDS = {"contraction_to_expansion", "second_expansion"}
+TRIGGER_KINDS = {"contraction_to_expansion", "second_expansion", "compression_release"}
 
 
 @dataclass
 class AtrTransition:
-    kind: str  # "contraction_to_expansion" | "second_expansion" | "expansion_continuation" |
+    kind: str  # "contraction_to_expansion" | "compression_release" | "second_expansion" |
+               # "expansion_continuation" | "expansion_to_contraction" | "expansion_to_flat" |
                # "contraction" | "flat" | "none"
     detail: str
     bars_since_prior_expansion: Optional[int] = None
@@ -135,6 +157,22 @@ def detect_transition(states: Sequence[Optional[AtrState]]) -> AtrTransition:
                 bars_since_prior_expansion=bars,
             )
 
+        # No earlier expansion behind the cooldown -- check whether the
+        # cooldown itself bridged through an actual contraction (not just
+        # flat bars) before releasing into this expansion. That's the
+        # "compression release" pattern: same family as a plain single-bar
+        # contraction_to_expansion flip, just recognized across a wider
+        # (possibly flat-bridged) cooldown window.
+        cooldown_span = clean[cooldown_start + 1:cooldown_end + 1]
+        if "contraction" in cooldown_span:
+            bars = cooldown_end - cooldown_start
+            return AtrTransition(
+                kind="compression_release",
+                detail=f"ATR compressed, bridged through {bars} cooldown bar(s), and is now expanding -- "
+                       f"compression-release breakout trigger (Mode 1: prepare -> confirmed).",
+                bars_since_prior_expansion=bars,
+            )
+
         return AtrTransition(
             kind="expansion_continuation",
             detail="ATR is expanding, but this reads as the first/ongoing expansion rather than "
@@ -142,9 +180,24 @@ def detect_transition(states: Sequence[Optional[AtrState]]) -> AtrTransition:
         )
 
     if current == "contraction":
+        if previous == "expansion":
+            return AtrTransition(
+                kind="expansion_to_contraction",
+                detail="ATR just rolled over from expansion into contraction -- momentum cooling / "
+                       "likely pullback in progress (not a trigger; watch for the next compression-release "
+                       "or second-expansion read).",
+            )
         return AtrTransition(
             kind="contraction",
             detail="ATR is contracting -- compression (Mode 1: prepare/wait, direction not yet known).",
+        )
+
+    if previous == "expansion":
+        return AtrTransition(
+            kind="expansion_to_flat",
+            detail="ATR just rolled over from expansion into flat -- possible exhaustion/consolidation "
+                   "after the move (not a trigger; watch for a flat-to-expansion or fresh "
+                   "compression-release read).",
         )
 
     return AtrTransition(

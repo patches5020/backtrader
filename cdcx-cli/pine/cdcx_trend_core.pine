@@ -1,0 +1,121 @@
+//@version=6
+// =============================================================================
+// CDCX Trend Core -- Pine Script port of cdcx-cli's trending-path logic.
+//
+// Ports: atr_ema_variant1.py (EMA/ATR trend), adx.py, rsi.py,
+// bollinger_bands.py (overextension guard), fair_value_gap.py (3-candle
+// imbalance), risk.py (1.5x ATR stop, 2% account-risk position sizing),
+// engine.py's TP_RATIOS (2.2R/2.6R/3.2R/4.5R take-profit ladder).
+//
+// NOT ported (see chat for why): 1H/4H/1D/1W multi-timeframe confluence
+// (confluence.py), true Volume Profile POC/VAH/VAL + HVN/LVN
+// (volume_profile_fixed.py/volume_profile_anchor.py -- TradingView's Volume
+// Profile is a visual drawing tool, not a value a strategy script can read),
+// the TRENDING/RANGING/TRANSITIONAL regime gate (regime.py) and the separate
+// ranging-strategy path (ranging_strategy.py), and trade_manager.py's
+// break-even/give-back trailing rules (this uses one static ATR stop per
+// entry instead).
+//
+// Sequential MTF framework this script's trending path is one leg of (see
+// README.md's "The sequential MTF framework, restated" and
+// docs/FLOWCHART.md section 10 for the full picture, and cdcx/setup_grade.py
+// for the A+ grading these ATR reads feed on the Python side):
+//   1W direction -> 1D location -> 4H state/setup -> 1H trigger.
+// The `atr`/`ta.rising`/`ta.falling` reads below are this script's single-
+// timeframe stand-in for atr_state.py's contraction/flat/expansion
+// *sequence* classification (contraction_to_expansion, compression_release,
+// second_expansion) -- not ported here since Pine strategy scripts see one
+// chart timeframe at a time, unlike the Python engine's full 4H-series read.
+// =============================================================================
+strategy("CDCX Trend Core (EMA/ATR/RSI/ADX, 1.5x ATR stop, R-multiple TPs)",
+     overlay = true,
+     pyramiding = 1,
+     process_orders_on_close = true,
+     commission_type = strategy.commission.percent, commission_value = 0.05,
+     default_qty_type = strategy.percent_of_equity, default_qty_value = 100,
+     margin_long = 100, margin_short = 100,
+     initial_capital = 10000)
+
+// ---- Inputs (mirrors cdcx/config.py + risk.py defaults) -------------------
+emaLen      = input.int(17, "EMA Length")
+atrLen      = input.int(11, "ATR Length")
+rsiLen      = input.int(17, "RSI Length")
+adxLen      = input.int(17, "ADX / DI Length")
+bbLen       = input.int(17, "Bollinger Length")
+bbMult      = input.float(2.0, "Bollinger StdDev Mult")
+atrStopMult = input.float(1.5, "ATR Stop Multiplier")
+riskPct     = input.float(2.0, "Risk % per trade")
+adxMin      = input.float(20.0, "Minimum ADX to trade")
+fvgLookback = input.int(20, "Bars to keep an FVG 'active'")
+
+// TP R-multiples -- same ratios as engine.py's TP_RATIOS
+tp1R = input.float(2.2, "TP1 R-multiple")
+tp2R = input.float(2.6, "TP2 R-multiple")
+tp3R = input.float(3.2, "TP3 R-multiple")
+tp4R = input.float(4.5, "TP4 R-multiple")
+
+// ---- Indicators -------------------------------------------------------
+ema = ta.ema(close, emaLen)
+atr = ta.atr(atrLen)
+rsi = ta.rsi(close, rsiLen)
+[diPlus, diMinus, adx] = ta.dmi(adxLen, adxLen)
+[bbMid, bbUpper, bbLower] = ta.bb(close, bbLen, bbMult)
+
+trendUp   = close > ema and ta.rising(ema, 3)
+trendDown = close < ema and ta.falling(ema, 3)
+
+adxOk  = adx >= adxMin
+diUp   = diPlus > diMinus
+diDown = diMinus > diPlus
+
+rsiUp   = rsi > 50
+rsiDown = rsi < 50
+
+// Bollinger overextension guard -- mirrors bollinger_bands.py's "(Extended)"
+// label: skip entries once price has already stretched beyond the band.
+percentB     = (close - bbLower) / (bbUpper - bbLower)
+extendedUp   = percentB > 1.0
+extendedDown = percentB < 0.0
+
+// ---- Fair Value Gap (3-candle imbalance, same rule as fair_value_gap.py) --
+// Simplification vs. the Python version: this checks "was there a recent
+// aligned gap," not exact fill-tracking of every historical gap (that needs
+// arrays to hold multiple open gaps at once).
+bullishFVG = low > high[2]
+bearishFVG = high < low[2]
+recentBullFVG = ta.barssince(bullishFVG) <= fvgLookback
+recentBearFVG = ta.barssince(bearishFVG) <= fvgLookback
+
+// ---- Entry logic --------------------------------------------------------
+longEntry  = trendUp   and adxOk and diUp   and rsiUp   and not extendedUp   and recentBullFVG
+shortEntry = trendDown and adxOk and diDown and rsiDown and not extendedDown and recentBearFVG
+
+// ---- Risk sizing -- identical formula to cdcx/risk.py ---------------------
+//   stop_distance = ATR * 1.5
+//   risk_amount   = account_equity * risk_pct / 100
+//   position_size = risk_amount / stop_distance
+stopDist   = atr * atrStopMult
+riskAmount = strategy.equity * (riskPct / 100)
+qty        = stopDist > 0 ? riskAmount / stopDist : 0.0
+
+longStop  = close - stopDist
+shortStop = close + stopDist
+
+if longEntry and strategy.position_size == 0
+    strategy.entry("L", strategy.long, qty = qty)
+    strategy.exit("L_TP1", from_entry = "L", qty_percent = 25, limit = close + stopDist * tp1R, stop = longStop)
+    strategy.exit("L_TP2", from_entry = "L", qty_percent = 25, limit = close + stopDist * tp2R, stop = longStop)
+    strategy.exit("L_TP3", from_entry = "L", qty_percent = 25, limit = close + stopDist * tp3R, stop = longStop)
+    strategy.exit("L_TP4", from_entry = "L", qty_percent = 25, limit = close + stopDist * tp4R, stop = longStop)
+
+if shortEntry and strategy.position_size == 0
+    strategy.entry("S", strategy.short, qty = qty)
+    strategy.exit("S_TP1", from_entry = "S", qty_percent = 25, limit = close - stopDist * tp1R, stop = shortStop)
+    strategy.exit("S_TP2", from_entry = "S", qty_percent = 25, limit = close - stopDist * tp2R, stop = shortStop)
+    strategy.exit("S_TP3", from_entry = "S", qty_percent = 25, limit = close - stopDist * tp3R, stop = shortStop)
+    strategy.exit("S_TP4", from_entry = "S", qty_percent = 25, limit = close - stopDist * tp4R, stop = shortStop)
+
+// ---- Plots ----------------------------------------------------------------
+plot(ema, "EMA", color = color.blue)
+plotshape(longEntry, "Long Entry", style = shape.triangleup, location = location.belowbar, color = color.green, size = size.small)
+plotshape(shortEntry, "Short Entry", style = shape.triangledown, location = location.abovebar, color = color.red, size = size.small)

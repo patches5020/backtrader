@@ -24,6 +24,8 @@ from cdcx.exchange.cryptocom import OHLCV
 from cdcx import risk, trade_manager
 from cdcx.entry_checklist import evaluate_entry_checklist
 from cdcx.confluence import evaluate_confluence
+from cdcx import regime as regime_module
+from cdcx import circuit_breaker
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +168,53 @@ def apply_trade_costs(
     return gross, costs, net, fill_exit, fee_cost, slip_cost, impact_cost
 
 
+def apply_trade_costs_over_partial_closes(
+    direction: str,
+    entry_price: float,
+    partial_closes: list[dict],
+    fee_pct: float,
+    slippage_pct: float,
+    avg_volume: float = 0.0,
+    volatility_pct: float = 0.0,
+    impact_coeff: float = 0.10,
+) -> tuple[float, float, float, float, float, float]:
+    """
+    Applies apply_trade_costs() to EACH exit slice in `partial_closes`
+    (trade_manager.Trade.partial_closes -- one entry per TP-triggered
+    partial close plus the final close, each with its own `price` and
+    `size_closed`) and sums the result.
+
+    Required because trade_manager.py closes a position in multiple slices
+    at different prices (partial closes at TP1-3, final close at TP4/stop/
+    give-back) -- pricing costs once against the FULL original size at only
+    the final exit price would silently misprice every multi-leg trade,
+    crediting/charging P&L on TP1-3's size as if it rode all the way to the
+    final exit instead of realizing there at its own, real price.
+
+    Fee and slippage are linear in size, so summing per-slice costs equals
+    one full-size cost -- no double-charging. Market impact (sqrt-law) is
+    computed per-slice against the same avg_volume, which is if anything
+    more realistic than one lump calculation (executing in tranches really
+    does cost less cumulative impact than dumping the full size at once).
+
+    Returns (gross_pnl, total_costs, net_pnl, fee_cost, slip_cost, impact_cost).
+    """
+    gross_total = costs_total = net_total = fee_total = slip_total = impact_total = 0.0
+    for leg in partial_closes:
+        gross, costs, net, _, fee_c, slip_c, imp_c = apply_trade_costs(
+            direction, entry_price, leg["price"], leg["size_closed"],
+            fee_pct, slippage_pct, avg_volume=avg_volume,
+            volatility_pct=volatility_pct, impact_coeff=impact_coeff,
+        )
+        gross_total += gross
+        costs_total += costs
+        net_total += net
+        fee_total += fee_c
+        slip_total += slip_c
+        impact_total += imp_c
+    return gross_total, costs_total, net_total, fee_total, slip_total, impact_total
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -181,6 +230,25 @@ def _slice_ohlcv(data: OHLCV, end: int) -> OHLCV:
         closes=data.closes[:end],
         volumes=data.volumes[:end],
     )
+
+
+def _circuit_breaker_tripped(
+    closed: list["BacktestTrade"], equity: list[float], current_balance: float,
+    max_consecutive_losses: Optional[int], max_drawdown_pct: Optional[float],
+) -> bool:
+    """Shared by both backtest functions -- either threshold set to None
+    disables that specific trigger (mapped to +inf, which no finite
+    consecutive-loss count or drawdown %% can ever reach)."""
+    if max_consecutive_losses is None and max_drawdown_pct is None:
+        return False
+    result = circuit_breaker.check_circuit_breaker(
+        [t.realized_pnl for t in closed],
+        peak_equity=max(equity) if equity else current_balance,
+        current_equity=current_balance,
+        max_consecutive_losses=max_consecutive_losses if max_consecutive_losses is not None else float("inf"),
+        max_drawdown_pct=max_drawdown_pct if max_drawdown_pct is not None else float("inf"),
+    )
+    return result.tripped
 
 
 def _signal_direction(signal: TradeSignal) -> Optional[str]:
@@ -253,6 +321,10 @@ def run_single_tf_backtest(
     min_score_long: float = 60.0,
     min_score_short: float = 40.0,   # scores below this become candidates for short
     require_checklist: bool = True,
+    require_regime_gate: bool = True,
+    max_consecutive_losses: Optional[int] = circuit_breaker.DEFAULT_MAX_CONSECUTIVE_LOSSES,
+    max_drawdown_pct: Optional[float] = circuit_breaker.DEFAULT_MAX_DRAWDOWN_PCT,
+    atr_multiplier_override: Optional[float] = None,
     trade_state_path: Optional[str] = None,
     fee_pct: float = 0.075,          # 7.5 bps per side (Crypto.com-style mid-tier taker)
     slippage_pct: float = 0.05,      # 5 bps fixed adverse slippage per side
@@ -264,6 +336,26 @@ def run_single_tf_backtest(
 
     Entry rules (configurable):
       - Signal must be BUY / STRONG BUY (or SELL / STRONG SELL)
+      - require_regime_gate (default True): skip the bar unless
+        `signal.execution_signal` isn't "NO TRADE" -- i.e. the SAME Step-1
+        regime gate (regime.py: TRENDING/RANGING/TRANSITIONAL) and R:R>=2:1
+        floor that `cli.py`'s live --execute path enforces before it will
+        ever open a trade. Without this, earlier versions of this backtest
+        happily opened trades during TRANSITIONAL (choppy, no trend or
+        range edge) conditions that live --execute would refuse outright --
+        a real gap, not a deliberate design choice; set False only to
+        specifically measure what the regime gate is worth vs. raw signal.
+      - max_consecutive_losses / max_drawdown_pct (see circuit_breaker.py):
+        pauses new entries after N losing trades in a row, or once running
+        equity has drawn down more than the given %% from its peak, until a
+        win / recovery clears it. Pass None to either to disable that
+        specific trigger.
+      - atr_multiplier_override (see risk.resolve_atr_multiplier): forces
+        one ATR stop multiplier for every trade regardless of symbol --
+        without it, `symbol` already resolves its own per-symbol default
+        automatically (settings.atr_multiplier_overrides, e.g. BTC:1.5,
+        XRP:1.0), no override needed for that. Pass this only to run a
+        deliberate sensitivity sweep across multiplier values.
       - Optional entry checklist (EMA, Fib, FVG, VP confirmation)
       - Only one open trade at a time (mirrors live rule C)
       - Risk-sized with the real risk.py logic
@@ -312,9 +404,12 @@ def run_single_tf_backtest(
                 if open_t.status == "closed":
                     meta = open_trade_meta or {}
                     exit_px = open_t.close_price or price
-                    gross, costs, net, _, fee_c, slip_c, imp_c = apply_trade_costs(
-                        open_t.direction, open_t.entry_price, exit_px,
-                        open_t.position_size, fee_pct, slippage_pct,
+                    # aggregate costs over EVERY exit slice (TP1-3 partials +
+                    # final), not once against the full size at only exit_px
+                    # -- see apply_trade_costs_over_partial_closes's docstring
+                    gross, costs, net, fee_c, slip_c, imp_c = apply_trade_costs_over_partial_closes(
+                        open_t.direction, open_t.entry_price, open_t.partial_closes,
+                        fee_pct, slippage_pct,
                         avg_volume=meta.get("avg_volume", 0.0),
                         volatility_pct=meta.get("volatility_pct", 0.0),
                         impact_coeff=impact_coeff,
@@ -352,9 +447,16 @@ def run_single_tf_backtest(
                 continue
 
             try:
-                signal = analyze_ohlcv(symbol, window)
+                signal = analyze_ohlcv(symbol, window, atr_multiplier_override=atr_multiplier_override)
             except Exception:
                 continue  # insufficient data for some indicator on this window
+
+            # Step 1 in live --execute: regime is an absolute gate, checked
+            # BEFORE direction/score. `execution_signal` already encodes
+            # both "regime is transitional" and "R:R below 2:1" as "NO
+            # TRADE" (see engine.py) -- reuse it here instead of re-deriving.
+            if require_regime_gate and signal.execution_signal == "NO TRADE":
+                continue
 
             direction = _signal_direction(signal)
             if direction is None:
@@ -367,6 +469,9 @@ def run_single_tf_backtest(
                 continue
 
             n_signals += 1
+
+            if _circuit_breaker_tripped(closed, equity, balance, max_consecutive_losses, max_drawdown_pct):
+                continue
 
             if require_checklist:
                 checklist = evaluate_entry_checklist(
@@ -391,6 +496,7 @@ def run_single_tf_backtest(
                 atr=signal.atr,
                 account_balance=balance,
                 risk_pct=risk_pct,
+                atr_multiplier_override=atr_multiplier_override,
             )
             if plan.position_size <= 0 or plan.stop_distance <= 0:
                 continue
@@ -434,15 +540,18 @@ def run_single_tf_backtest(
             last_price = data.closes[-1]
             trade_manager.update_trade(open_t, last_price)
             if open_t.status == "open":
-                from cdcx.trade_manager import _close_trade
-                _close_trade(open_t, last_price, "End of backtest force-close", [])
+                from cdcx.trade_manager import _close_size
+                # close whatever remains (partial TP closes may already have
+                # eaten into position_size before the window ran out -- force
+                # the REMAINDER, not the original full size)
+                _close_size(open_t, last_price, open_t.remaining_size, None, "End of backtest force-close", [])
             trade_manager.save_trades(all_trades)
 
             meta = open_trade_meta or {}
             exit_px = open_t.close_price or last_price
-            gross, costs, net, _, fee_c, slip_c, imp_c = apply_trade_costs(
-                open_t.direction, open_t.entry_price, exit_px,
-                open_t.position_size, fee_pct, slippage_pct,
+            gross, costs, net, fee_c, slip_c, imp_c = apply_trade_costs_over_partial_closes(
+                open_t.direction, open_t.entry_price, open_t.partial_closes,
+                fee_pct, slippage_pct,
                 avg_volume=meta.get("avg_volume", 0.0),
                 volatility_pct=meta.get("volatility_pct", 0.0),
                 impact_coeff=impact_coeff,
@@ -498,6 +607,9 @@ def run_single_tf_backtest(
         notes=(
             f"Single-TF + paper rules | fee {fee_pct:.3f}% + slip {slippage_pct:.3f}% "
             f"+ impact_coeff {impact_coeff:.2f}/side"
+            + (" | regime-gated" if require_regime_gate else " | regime gate DISABLED")
+            + (f" | circuit breaker: {max_consecutive_losses or '-'} losses / {max_drawdown_pct or '-'}% DD"
+               if (max_consecutive_losses or max_drawdown_pct) else " | circuit breaker DISABLED")
         ),
         **stats,
     )
@@ -513,6 +625,10 @@ def run_confluence_backtest(
     warmup_1h: int = 200,
     initial_balance: float = 10_000.0,
     risk_pct: float = 2.0,
+    require_regime_gate: bool = True,
+    max_consecutive_losses: Optional[int] = circuit_breaker.DEFAULT_MAX_CONSECUTIVE_LOSSES,
+    max_drawdown_pct: Optional[float] = circuit_breaker.DEFAULT_MAX_DRAWDOWN_PCT,
+    atr_multiplier_override: Optional[float] = None,
     fee_pct: float = 0.075,
     slippage_pct: float = 0.05,
     impact_coeff: float = 0.10,
@@ -524,6 +640,22 @@ def run_confluence_backtest(
 
     Entry only when confluence.should_execute is True and the entry-TF
     checklist passes. Uses the same risk + trade-manager path.
+
+    max_consecutive_losses / max_drawdown_pct: same circuit breaker as
+    run_single_tf_backtest -- see circuit_breaker.py. None disables a
+    specific trigger.
+
+    atr_multiplier_override: same as run_single_tf_backtest -- `symbol`
+    already resolves its own per-symbol default automatically; pass this
+    only to force one multiplier for a deliberate sensitivity sweep.
+
+    require_regime_gate (default True): mirrors `cli.py`'s `_handle_execute`
+    exactly -- once confluence.should_execute is True, regime is
+    RECOMPUTED with `higher_timeframes_aligned=True` (a real trend-scoring
+    bonus live gets once confluence is already confirmed, not the same
+    stricter regime attached to the per-timeframe signals above), and a
+    TRANSITIONAL read still blocks the trade outright regardless of
+    confluence/checklist. Set False only to measure what the gate is worth.
     """
     from cdcx.backtest.synthetic import resample_ohlcv
 
@@ -566,9 +698,9 @@ def run_confluence_backtest(
                 if open_t.status == "closed":
                     meta = open_meta or {}
                     exit_px = open_t.close_price or price
-                    gross, costs, net, _, fee_c, slip_c, imp_c = apply_trade_costs(
-                        open_t.direction, open_t.entry_price, exit_px,
-                        open_t.position_size, fee_pct, slippage_pct,
+                    gross, costs, net, fee_c, slip_c, imp_c = apply_trade_costs_over_partial_closes(
+                        open_t.direction, open_t.entry_price, open_t.partial_closes,
+                        fee_pct, slippage_pct,
                         avg_volume=meta.get("avg_volume", 0.0),
                         volatility_pct=meta.get("volatility_pct", 0.0),
                         impact_coeff=impact_coeff,
@@ -604,7 +736,7 @@ def run_confluence_backtest(
             # build signals for each TF up to current time
             try:
                 w1h = _slice_ohlcv(data_1h, i)
-                sig_1h = analyze_ohlcv(symbol, w1h)
+                sig_1h = analyze_ohlcv(symbol, w1h, atr_multiplier_override=atr_multiplier_override)
 
                 i4 = _tf_index(data_4h, ts)
                 i1d = _tf_index(data_1d, ts)
@@ -612,9 +744,9 @@ def run_confluence_backtest(
                 if min(i4, i1d, i1w) < 50:
                     continue
 
-                sig_4h = analyze_ohlcv(symbol, _slice_ohlcv(data_4h, i4))
-                sig_1d = analyze_ohlcv(symbol, _slice_ohlcv(data_1d, i1d))
-                sig_1w = analyze_ohlcv(symbol, _slice_ohlcv(data_1w, i1w))
+                sig_4h = analyze_ohlcv(symbol, _slice_ohlcv(data_4h, i4), atr_multiplier_override=atr_multiplier_override)
+                sig_1d = analyze_ohlcv(symbol, _slice_ohlcv(data_1d, i1d), atr_multiplier_override=atr_multiplier_override)
+                sig_1w = analyze_ohlcv(symbol, _slice_ohlcv(data_1w, i1w), atr_multiplier_override=atr_multiplier_override)
             except Exception:
                 continue
 
@@ -628,9 +760,24 @@ def run_confluence_backtest(
             if not conf.should_execute:
                 continue
 
+            # Step 1 in live --execute (cli.py's _handle_execute): once
+            # confluence passes, regime is recomputed with
+            # higher_timeframes_aligned=True and still blocks a TRANSITIONAL
+            # read outright, before the checklist even runs.
+            if require_regime_gate:
+                regime_result = regime_module.analyze(
+                    w1h.highs, w1h.lows, w1h.closes, w1h.volumes,
+                    higher_timeframes_aligned=True,
+                )
+                if regime_result.regime == "transitional":
+                    continue
+
             n_signals += 1
             direction = conf.direction
             entry_sig = sig_1h  # fastest TF for sizing
+
+            if _circuit_breaker_tripped(closed, equity, balance, max_consecutive_losses, max_drawdown_pct):
+                continue
 
             checklist = evaluate_entry_checklist(
                 entry_sig, direction, risk_pct=risk_pct, symbol=symbol
@@ -653,6 +800,7 @@ def run_confluence_backtest(
                 atr=entry_sig.atr,
                 account_balance=balance,
                 risk_pct=risk_pct,
+                atr_multiplier_override=atr_multiplier_override,
             )
             if plan.position_size <= 0 or plan.stop_distance <= 0:
                 continue
@@ -691,14 +839,14 @@ def run_confluence_backtest(
             last = data_1h.closes[-1]
             trade_manager.update_trade(open_t, last)
             if open_t.status == "open":
-                from cdcx.trade_manager import _close_trade
-                _close_trade(open_t, last, "End of backtest force-close", [])
+                from cdcx.trade_manager import _close_size
+                _close_size(open_t, last, open_t.remaining_size, None, "End of backtest force-close", [])
             trade_manager.save_trades(all_trades)
             meta = open_meta or {}
             exit_px = open_t.close_price or last
-            gross, costs, net, _, fee_c, slip_c, imp_c = apply_trade_costs(
-                open_t.direction, open_t.entry_price, exit_px,
-                open_t.position_size, fee_pct, slippage_pct,
+            gross, costs, net, fee_c, slip_c, imp_c = apply_trade_costs_over_partial_closes(
+                open_t.direction, open_t.entry_price, open_t.partial_closes,
+                fee_pct, slippage_pct,
                 avg_volume=meta.get("avg_volume", 0.0),
                 volatility_pct=meta.get("volatility_pct", 0.0),
                 impact_coeff=impact_coeff,
@@ -754,6 +902,9 @@ def run_confluence_backtest(
         notes=(
             f"Multi-TF confluence + checklist | fee {fee_pct:.3f}% + slip {slippage_pct:.3f}% "
             f"+ impact_coeff {impact_coeff:.2f}/side"
+            + (" | regime-gated" if require_regime_gate else " | regime gate DISABLED")
+            + (f" | circuit breaker: {max_consecutive_losses or '-'} losses / {max_drawdown_pct or '-'}% DD"
+               if (max_consecutive_losses or max_drawdown_pct) else " | circuit breaker DISABLED")
         ),
         **stats,
     )

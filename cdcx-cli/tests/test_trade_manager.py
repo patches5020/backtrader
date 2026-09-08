@@ -82,3 +82,89 @@ def test_hard_stop_closes_trade_before_any_tp():
     trade_manager.update_trade(trade, 63700)  # below initial stop of 63725
     assert trade.status == "closed"
     assert "Stopped out" in trade.close_reason
+
+
+# --- partial-close-at-each-TP (configurable %) ------------------------------
+
+def test_default_tp_close_pcts_is_four_equal_slices():
+    trade, _ = _open_sample_long()
+    assert trade.tp_close_pcts == [25.0, 25.0, 25.0, 25.0]
+    assert trade.remaining_size == trade.position_size
+
+
+def test_tp1_partially_closes_25pct_of_original_size_by_default():
+    trade, _ = _open_sample_long()
+    original_size = trade.position_size
+    trade_manager.update_trade(trade, 66100)  # TP1
+
+    assert trade.status == "open"  # NOT fully closed -- only a partial close
+    assert trade.remaining_size == pytest.approx(original_size * 0.75)
+    assert len(trade.partial_closes) == 1
+    assert trade.partial_closes[0]["tp_index"] == 0
+    assert trade.partial_closes[0]["size_closed"] == pytest.approx(original_size * 0.25)
+    assert trade.realized_pnl > 0  # TP1 was a winning slice
+
+
+def test_realized_pnl_accumulates_across_partial_closes():
+    trade, _ = _open_sample_long()
+    trade_manager.update_trade(trade, 66100)  # TP1
+    pnl_after_tp1 = trade.realized_pnl
+    trade_manager.update_trade(trade, 67200)  # TP2
+
+    assert trade.realized_pnl > pnl_after_tp1  # cumulative, not overwritten
+    assert len(trade.partial_closes) == 2
+
+
+def test_tp4_closes_100_percent_of_remaining_regardless_of_its_own_pct():
+    """Even if TP4's configured slot in tp_close_pcts isn't 100 (or is 0),
+    reaching the final TP must close whatever remains outright."""
+    trade, message = trade_manager.open_trade(
+        symbol="BTC/USDT", direction="long", entry_price=65000.0, atr=850.0,
+        stop_price=63725.0, tp_levels=[66000, 67000, 68500, 71000],
+        position_size=1.0, risk_amount=200.0, account_balance=10000.0,
+        tp_close_pcts=[10.0, 10.0, 10.0, 0.0],  # TP4 slot deliberately 0
+    )
+    for price in [66100, 67200, 68600, 71200]:
+        trade_manager.update_trade(trade, price)
+
+    assert trade.status == "closed"
+    assert trade.remaining_size == 0.0
+    # 10% + 10% + 10% = 30% closed at TP1-3, TP4 must close the other 70%
+    assert trade.partial_closes[-1]["size_closed"] == pytest.approx(0.70)
+
+
+def test_custom_tp_close_pcts_are_honored():
+    trade, _ = trade_manager.open_trade(
+        symbol="BTC/USDT", direction="long", entry_price=65000.0, atr=850.0,
+        stop_price=63725.0, tp_levels=[66000, 67000, 68500, 71000],
+        position_size=1.0, risk_amount=200.0, account_balance=10000.0,
+        tp_close_pcts=[50.0, 25.0, 25.0, 25.0],
+    )
+    trade_manager.update_trade(trade, 66100)  # TP1
+    assert trade.partial_closes[0]["size_closed"] == pytest.approx(0.50)
+    assert trade.remaining_size == pytest.approx(0.50)
+
+
+def test_giveback_exit_closes_only_the_remaining_size_after_tp1_partial():
+    trade, _ = _open_sample_long()
+    original_size = trade.position_size
+    trade_manager.update_trade(trade, 66100)  # TP1: 25% closed, 75% remains
+    trade_manager.update_trade(trade, 65150)  # give-back exit on the remainder
+
+    assert trade.status == "closed"
+    assert len(trade.partial_closes) == 2
+    assert trade.partial_closes[1]["size_closed"] == pytest.approx(original_size * 0.75)
+
+
+def test_safety_warning_flags_a_bad_slice_not_just_cumulative_loss():
+    # A large TP1 win followed by a catastrophic gap-through-stop on the
+    # remainder must still flag the warning for that bad slice.
+    trade, _ = trade_manager.open_trade(
+        symbol="BTC/USDT", direction="long", entry_price=65000.0, atr=850.0,
+        stop_price=63725.0, tp_levels=[66000, 67000, 68500, 71000],
+        position_size=10.0, risk_amount=200.0, account_balance=1000.0,
+    )
+    trade_manager.update_trade(trade, 66100)  # TP1: big win slice
+    trade_manager.update_trade(trade, 50000)  # catastrophic gap on the remainder
+    assert trade.safety_warning is not None
+    assert "safety ceiling" in trade.safety_warning

@@ -28,6 +28,8 @@ class VolumeProfileResult:
     val: float
     score: int
     label: str
+    hvn: float = 0.0  # High-Volume Node: the tallest bucket OTHER than the POC itself
+    lvn: float = 0.0  # Low-Volume Node: the thinnest-traded bucket in the profile
 
 
 def build_volume_profile(
@@ -88,6 +90,21 @@ def calculate_poc_vah_val(histogram: dict[float, float], value_area_pct: float =
     return poc_price, vah, val
 
 
+def find_hvn_lvn(histogram: dict[float, float], poc_price: float) -> tuple[float, float]:
+    """
+    HVN (High-Volume Node): the tallest bucket in the profile OTHER than the
+    POC itself -- a secondary area of price acceptance, not just POC under a
+    different name.
+    LVN (Low-Volume Node): the thinnest-traded bucket in the whole profile --
+    a low-conviction "air pocket" price tends to move through quickly,
+    commonly used as a breakout/retest reference level.
+    """
+    others = {p: v for p, v in histogram.items() if p != poc_price}
+    hvn_price = max(others, key=others.get) if others else poc_price
+    lvn_price = min(histogram, key=histogram.get)
+    return hvn_price, lvn_price
+
+
 def score_volume_profile(price: float, poc: float, vah: float, val: float) -> tuple[int, str]:
     if price > vah:
         return FIXED_VP_WEIGHT, "Above Value Area"
@@ -107,8 +124,9 @@ def analyze(
     highs, lows, volumes = highs[-lookback:], lows[-lookback:], volumes[-lookback:]
     histogram = build_volume_profile(highs, lows, volumes)
     poc, vah, val = calculate_poc_vah_val(histogram)
+    hvn, lvn = find_hvn_lvn(histogram, poc)
     score, label = score_volume_profile(price, poc, vah, val)
-    return VolumeProfileResult(poc=poc, vah=vah, val=val, score=score, label=label)
+    return VolumeProfileResult(poc=poc, vah=vah, val=val, score=score, label=label, hvn=hvn, lvn=lvn)
 
 
 if __name__ == "__main__":

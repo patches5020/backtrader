@@ -44,7 +44,7 @@ def _make_fetch_structure_map(fetch_calls):
 
 
 def test_timeframe_matching_a_structural_role_gets_a_merged_block(monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit: _fake_signal())
+    monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit, **kwargs: _fake_signal())
     monkeypatch.setattr(engine_module, "format_report", lambda signal: f"REPORT")
     fetch_calls = []
     monkeypatch.setattr(cli, "_fetch_structure_map", _make_fetch_structure_map(fetch_calls))
@@ -74,7 +74,7 @@ def test_timeframe_matching_a_structural_role_gets_a_merged_block(monkeypatch, c
 
 
 def test_timeframe_not_a_structural_role_gets_no_merged_block(monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit: _fake_signal())
+    monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit, **kwargs: _fake_signal())
     monkeypatch.setattr(engine_module, "format_report", lambda signal: "REPORT")
     fetch_calls = []
     monkeypatch.setattr(cli, "_fetch_structure_map", _make_fetch_structure_map(fetch_calls))
@@ -100,7 +100,7 @@ def test_timeframe_not_a_structural_role_gets_no_merged_block(monkeypatch, capsy
 
 
 def test_without_structure_flag_nothing_structural_is_fetched(monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit: _fake_signal())
+    monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit, **kwargs: _fake_signal())
     monkeypatch.setattr(engine_module, "format_report", lambda signal: "REPORT")
     fetch_calls = []
     monkeypatch.setattr(cli, "_fetch_structure_map", _make_fetch_structure_map(fetch_calls))
@@ -112,7 +112,7 @@ def test_without_structure_flag_nothing_structural_is_fetched(monkeypatch, capsy
 
 
 def test_timeframes_run_merges_all_four_roles_and_reuses_fetches_for_final_section(monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit: _fake_signal())
+    monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit, **kwargs: _fake_signal())
     monkeypatch.setattr(engine_module, "format_report", lambda signal: "REPORT")
     fetch_calls = []
     monkeypatch.setattr(cli, "_fetch_structure_map", _make_fetch_structure_map(fetch_calls))
@@ -144,10 +144,10 @@ def test_timeframes_run_merges_all_four_roles_and_reuses_fetches_for_final_secti
 def test_timeframes_execute_run_structure_section_prints_after_execute_plan(monkeypatch, capsys):
     order = []
 
-    monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit: _fake_signal())
+    monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit, **kwargs: _fake_signal())
     monkeypatch.setattr(engine_module, "format_report", lambda signal: "REPORT")
 
-    def fake_execute(symbol, balance, risk_pct, results, limit, live, instrument_name_override, news_imminent):
+    def fake_execute(symbol, balance, risk_pct, results, limit, live, instrument_name_override, news_imminent, **kwargs):
         order.append("execute")
         print("EXECUTE PLAN HERE")
         return 0

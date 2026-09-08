@@ -12,6 +12,7 @@ the full flow diagram and weight table.
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -29,6 +30,7 @@ from .indicators import volume_profile_anchor
 from .indicators import market_structure
 from .indicators import candlestick_patterns
 from . import regime as regime_module
+from . import risk as risk_module
 from .utils.color import REGIME_TAGS, colorize_regime
 
 # Indicator weights as specified. Note: these already summed to 120 (not
@@ -83,6 +85,49 @@ class TradeSignal:
     # "Decision Confidence" in the report so a NO TRADE decision reads as "confident this ISN'T a trade,"
     # not "confident the trade will win" -- same underlying number, honest relabeling of what it measures.
 
+    # Raw structural levels behind the scores above -- kept only for display
+    # (e.g. paper_approval.py's PAPER TRADE APPROVAL report); scoring itself
+    # never reads these back.
+    swing_high: float = 0.0
+    swing_low: float = 0.0
+    poc: float = 0.0                        # fixed volume profile point of control
+    vah: float = 0.0
+    val: float = 0.0
+    hvn: float = 0.0                        # secondary high-volume node (not POC itself)
+    lvn: float = 0.0                        # low-volume node
+    fvg_top: Optional[float] = None         # active (unfilled, trend-aligned) FVG, if any
+    fvg_bottom: Optional[float] = None
+    fib_levels: dict = field(default_factory=dict)  # retracement ladder, e.g. {"0.618": 64123.45, ...}
+    fib_extension_levels: dict = field(default_factory=dict)  # extension/target ladder,
+                                             # e.g. {"1.618": 68123.45, ...} -- profit-target candidates,
+                                             # keyed off the SAME trend direction as the stop/TP plan below
+    atr_multiplier: float = 1.5             # actual ATR stop multiplier used for stop_loss/take_profits
+                                             # below -- see risk.resolve_atr_multiplier() (per-symbol aware)
+    tp_ratios: list = field(default_factory=lambda: [2.2, 2.6, 3.2, 4.5])  # actual TP1-4
+                                             # R-multiples used -- see risk.resolve_tp_ratios()
+    tp_mode: str = "atr"                    # "atr" (fixed R-multiples, default) or "structural"
+                                             # (nearest real resistance/support) -- see risk.resolve_tp_mode()
+
+
+def _round_price(value: float, sig_figs: int = 6) -> float:
+    """
+    Rounds to `sig_figs` SIGNIFICANT figures rather than a flat number of
+    decimal places -- a flat round(x, 2) is fine for BTC (~$65,000) but
+    silently collapses distinct price levels on low-priced assets. Confirmed
+    live on XRP/USD: raw TP1-4 R-multiple targets 0.991702 / 0.989975 /
+    0.987384 / 0.981772 all rounded to 2dp landed on 0.99 / 0.99 / 0.99 /
+    0.98 -- three of four TP levels became identical, and TP4 (meant to be
+    the farthest target) rounded to a value that could even sit on the wrong
+    side of TP1-3, breaking trade_manager.py's "TP levels are ordered"
+    invariant. Scaling precision to the price's own magnitude keeps every
+    level distinct and correctly ordered regardless of the asset's price.
+    """
+    if value == 0:
+        return 0.0
+    magnitude = math.floor(math.log10(abs(value)))
+    decimals = max(sig_figs - magnitude - 1, 0)
+    return round(value, decimals)
+
 
 def classify_signal(total_score: float) -> tuple[str, str]:
     if total_score >= 96:
@@ -115,6 +160,8 @@ def risk_reward_score(entry: float, stop_loss: float, take_profit: float, max_we
 
 def analyze(
     symbol: str = None, timeframe: str = None, limit: int = None, higher_timeframes_aligned: bool = False,
+    atr_multiplier_override: Optional[float] = None, tp_ratios_override: Optional[str] = None,
+    tp_mode_override: Optional[str] = None,
 ) -> TradeSignal:
     symbol = symbol or settings.default_symbol
     timeframe = timeframe or settings.default_timeframe
@@ -123,11 +170,17 @@ def analyze(
     exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
     data: OHLCV = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
 
-    return analyze_ohlcv(symbol, data, higher_timeframes_aligned=higher_timeframes_aligned, timeframe=timeframe)
+    return analyze_ohlcv(
+        symbol, data, higher_timeframes_aligned=higher_timeframes_aligned, timeframe=timeframe,
+        atr_multiplier_override=atr_multiplier_override, tp_ratios_override=tp_ratios_override,
+        tp_mode_override=tp_mode_override,
+    )
 
 
 def analyze_ohlcv(
     symbol: str, data: OHLCV, higher_timeframes_aligned: bool = False, timeframe: str = "",
+    atr_multiplier_override: Optional[float] = None, tp_ratios_override: Optional[str] = None,
+    tp_mode_override: Optional[str] = None,
 ) -> TradeSignal:
     price = data.closes[-1]
     lookback = min(settings.swing_lookback, len(data.closes) - 1)
@@ -182,20 +235,87 @@ def analyze_ohlcv(
     )
 
     # --- Stop loss / take profit -----------------------------------------
-    # TP1-4 are derived from the SAME stop_distance (ATR * 1.5 by default)
+    # TP1-4 are derived from the SAME stop_distance (ATR * atr_multiplier)
     # used for the stop loss. Never derive execution levels from an unrelated
-    # historical swing.
-    stop_distance = ema_result.atr * settings.atr_stop_multiplier
-    TP_RATIOS = [2.2, 2.6, 3.2, 4.5]
+    # historical swing. atr_multiplier is resolved per-symbol (risk.py) --
+    # the same value risk.build_position_plan will use for the real stop/
+    # size, so the report and the actual trade plan can never disagree.
+    atr_multiplier = risk_module.resolve_atr_multiplier(symbol, atr_multiplier_override)
+    stop_distance = ema_result.atr * atr_multiplier
+    # Selectable at input (--tp-ratios / TP_RATIOS in .env), not hardcoded --
+    # see risk.resolve_tp_ratios().
+    TP_RATIOS = risk_module.resolve_tp_ratios(tp_ratios_override)
+    # "atr" (default) or "structural" -- see risk.resolve_tp_mode() and the
+    # _structural_candidates()/_build_plan() use below. Opt-in: the ATR
+    # ladder above is unaffected unless --tp-mode structural is passed.
+    tp_mode = risk_module.resolve_tp_mode(tp_mode_override)
+
+    swing_diff = swing_high - swing_low
+
+    def _real_down_extension_levels() -> list[float]:
+        """fibonacci.calculate_extension()'s docstring: for direction="down",
+        a raw target (swing_high - diff*ratio) that goes negative or to zero
+        -- routine once the swing range exceeds ~38% of swing_high, which is
+        common on a wide-range timeframe like 1D/1W -- gets floored at
+        swing_low*0.01 so the VALUE stays usable for score_extension's
+        ordering check. That floor is an arithmetic safety clamp, not a real
+        price level -- confirmed live on XRP/USD 1w, where a genuine
+        swing_high=3.19/swing_low=0.99 range floored TP3/TP4 to $0.0079 and
+        $0.0069 (>99% below entry) when fed through unfiltered as structural
+        TP candidates. Recomputes the same raw formula here just to exclude
+        anything that hit the floor -- the "up" direction never floors (see
+        calculate_extension), so this is only ever called for "down"."""
+        return [
+            v for k, v in ext_result.levels.items()
+            if (swing_high - swing_diff * float(k)) > 0
+        ]
+
+    def _structural_candidates(plan_direction: str) -> list[float]:
+        """Real prices ahead of the current price in plan_direction, pulled
+        from whatever structural levels this timeframe already computed:
+        volume-profile VAH/HVN (resistance-side) or VAL/LVN (support-side),
+        the swing high/low, an active FVG edge, and a Fibonacci extension
+        rung -- extension levels only count when ext_result's OWN direction
+        (fixed to the EMA trend, set above as extension_direction) matches
+        plan_direction, since plan_direction can differ from it on the
+        neutral-EMA fallback pass below; a mismatch just means fewer
+        extension candidates, not a wrong-direction target."""
+        candidates: list[float] = []
+        if plan_direction == "up":
+            candidates += [fixed_vp_result.vah, fixed_vp_result.hvn, swing_high]
+            if fvg_result.active_gap:
+                candidates.append(fvg_result.active_gap.top)
+            if extension_direction == "up":
+                candidates += list(ext_result.levels.values())  # "up" never floors
+        else:
+            candidates += [fixed_vp_result.val, fixed_vp_result.lvn, swing_low]
+            if fvg_result.active_gap:
+                candidates.append(fvg_result.active_gap.bottom)
+            if extension_direction == "down":
+                candidates += _real_down_extension_levels()
+        return [c for c in candidates if c]  # drop 0.0/None placeholders (e.g. no active FVG)
 
     def _build_plan(plan_direction: str | None):
         if plan_direction is None:
             return price, {f"TP{i + 1}": price for i in range(4)}, 0.0, None
         stop = price - stop_distance if plan_direction == "up" else price + stop_distance
-        tps = {}
-        for i, ratio in enumerate(TP_RATIOS):
+        atr_tps = []
+        for ratio in TP_RATIOS:
             raw_tp = price + stop_distance * ratio if plan_direction == "up" else price - stop_distance * ratio
-            tps[f"TP{i + 1}"] = max(raw_tp, price * 0.01)
+            atr_tps.append(max(raw_tp, price * 0.01))
+
+        if tp_mode == "structural":
+            # Structural TPs use the ATR ladder only as a per-rung fallback
+            # (see risk.build_structural_tp_levels) when a real level isn't
+            # available -- never fewer than 4 targets, never one behind price.
+            direction_label = "long" if plan_direction == "up" else "short"
+            tp_values = risk_module.build_structural_tp_levels(
+                direction_label, price, stop_distance, _structural_candidates(plan_direction), atr_tps,
+            )
+        else:
+            tp_values = atr_tps
+
+        tps = {f"TP{i + 1}": v for i, v in enumerate(tp_values)}
         rr = abs(tps["TP1"] - price) / abs(price - stop) if price != stop else None
         return stop, tps, risk_reward_score(price, stop, tps["TP1"]), rr
 
@@ -344,8 +464,8 @@ def analyze_ohlcv(
         labels=labels,
         entry=price,
         atr=round(ema_result.atr, 8),
-        stop_loss=round(stop_loss, 2),
-        take_profits={k: round(v, 2) for k, v in take_profits.items()},
+        stop_loss=_round_price(stop_loss),
+        take_profits={k: _round_price(v) for k, v in take_profits.items()},
         risk_reward_ratio=round(rr_ratio, 2) if rr_ratio else None,
         confidence=confidence,
         regime=regime_result,
@@ -358,6 +478,20 @@ def analyze_ohlcv(
         atr_length=atr_ema_variant1.ATR_LENGTH,
         setup_score=setup_score,
         decision=execution_signal,
+        swing_high=swing_high,
+        swing_low=swing_low,
+        poc=fixed_vp_result.poc,
+        vah=fixed_vp_result.vah,
+        val=fixed_vp_result.val,
+        hvn=fixed_vp_result.hvn,
+        lvn=fixed_vp_result.lvn,
+        fvg_top=fvg_result.active_gap.top if fvg_result.active_gap else None,
+        fvg_bottom=fvg_result.active_gap.bottom if fvg_result.active_gap else None,
+        fib_levels=retr_result.levels,
+        fib_extension_levels=ext_result.levels,
+        atr_multiplier=atr_multiplier,
+        tp_ratios=TP_RATIOS,
+        tp_mode=tp_mode,
     )
 
 
@@ -421,8 +555,13 @@ def format_report(signal: TradeSignal) -> str:
     lines.append(f"Entry:       {signal.entry:.6f}")
     lines.append(f"ATR:         {signal.atr:.6f}")
     atr_x_multiplier = abs(signal.entry - signal.stop_loss)
-    lines.append(f"ATR x mult:  {atr_x_multiplier:.6f}  (multiplier x ATR -- the distance added/subtracted for the stop)")
+    lines.append(
+        f"ATR x mult:  {atr_x_multiplier:.6f}  ({signal.atr_multiplier:g}x ATR -- "
+        "the distance added/subtracted for the stop)"
+    )
     lines.append(f"Stop Loss:   {signal.stop_loss}")
+    tp_mode_note = "ATR R-multiples" if signal.tp_mode == "atr" else "structural levels, ATR fallback"
+    lines.append(f"Take Profits ({tp_mode_note}):")
     for tp_name, tp_price in signal.take_profits.items():
         lines.append(f"{tp_name}: {tp_price}")
     lines.append("")

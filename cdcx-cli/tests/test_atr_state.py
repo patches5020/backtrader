@@ -77,6 +77,27 @@ def test_detect_transition_ignores_leading_none_padding():
     assert result.kind == "contraction_to_expansion"
 
 
+def test_detect_transition_compression_release_is_a_trigger():
+    # contraction -> flat bridge -> expansion, no earlier expansion behind it
+    states = ["contraction", "flat", "flat", "expansion"]
+    result = atr_state.detect_transition(states)
+    assert result.kind == "compression_release"
+    assert result.is_trigger is True
+    assert result.bars_since_prior_expansion == 3
+
+
+def test_detect_transition_expansion_to_contraction_is_not_a_trigger():
+    result = atr_state.detect_transition(["expansion", "expansion", "contraction"])
+    assert result.kind == "expansion_to_contraction"
+    assert result.is_trigger is False
+
+
+def test_detect_transition_expansion_to_flat_is_not_a_trigger():
+    result = atr_state.detect_transition(["expansion", "expansion", "flat"])
+    assert result.kind == "expansion_to_flat"
+    assert result.is_trigger is False
+
+
 # ---------------------------------------------------------------------------
 # analyze (OHLC convenience wrapper)
 # ---------------------------------------------------------------------------

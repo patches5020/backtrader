@@ -30,6 +30,9 @@ import sys
 
 from . import risk
 from . import trade_manager
+from . import journal
+from . import paper_approval
+from . import circuit_breaker
 from .confluence import evaluate_confluence
 from .entry_checklist import evaluate_entry_checklist, format_checklist
 from . import regime as regime_module
@@ -91,6 +94,15 @@ def build_parser() -> argparse.ArgumentParser:
              "for every pair. Always shown for review before anything is sent.",
     )
     parser.add_argument(
+        "--confirmed-no-withdraw-permission", action="store_true",
+        help="Required for --live to proceed past the final no-trade gate "
+             "(cdcx/no_trade_gate.py). This project cannot query Crypto.com API key "
+             "permissions automatically -- pass this only after manually confirming, "
+             "in your Crypto.com account's API-key settings, that the key used here "
+             "does NOT have withdrawal permission enabled. Without it, --live is "
+             "refused at the final gate, fail-closed, every time.",
+    )
+    parser.add_argument(
         "--balance", type=float, default=None,
         help=f"account balance for position sizing (default: {settings.default_account_balance}, "
              "or DEFAULT_ACCOUNT_BALANCE in .env).",
@@ -99,6 +111,47 @@ def build_parser() -> argparse.ArgumentParser:
         "--risk-pct", type=float, default=None,
         help=f"risk %% per trade (default: {settings.risk_pct_per_trade}, or RISK_PCT_PER_TRADE in .env; "
              "must be <= 2.0 to pass the entry checklist).",
+    )
+    parser.add_argument(
+        "--atr-multiplier", type=float, default=None,
+        help="Override the ATR stop-loss multiplier for this run, for any symbol -- "
+             f"always wins over the per-symbol table below. Default resolution (see "
+             f"cdcx/risk.py's resolve_atr_multiplier): per-symbol override from "
+             f"ATR_MULTIPLIER_OVERRIDES in .env (ships with '{settings.atr_multiplier_overrides}', "
+             f"backtested empirically), else {settings.atr_stop_multiplier} (ATR_STOP_MULTIPLIER).",
+    )
+    parser.add_argument(
+        "--tp-ratios", type=str, default=None,
+        help="Override TP1-4 R-multiples of stop_distance for this run, e.g. '2,3,4,5' -- "
+             f"selectable at input, not hardcoded (default: TP_RATIOS in .env, "
+             f"currently '{settings.tp_ratios}'). See cdcx/risk.py's resolve_tp_ratios.",
+    )
+    parser.add_argument(
+        "--tp-mode", type=str, default=None, choices=["atr", "structural"],
+        help="How TP1-4 are computed: 'atr' (default -- fixed R-multiples of stop_distance, "
+             "see --tp-ratios) or 'structural' (nearest real resistance/support -- volume-profile "
+             f"VAH/VAL/HVN/LVN, a Fibonacci extension rung, a swing high/low, or an active FVG edge; "
+             "any rung without a real candidate falls back to its ATR level). Default: TP_MODE in "
+             f".env, currently '{settings.tp_mode}'. See cdcx/risk.py's build_structural_tp_levels.",
+    )
+    parser.add_argument(
+        "--tp-close-pcts", type=str, default=None,
+        help="Override what %% of the ORIGINAL position size closes at each of TP1-4, e.g. "
+             f"'50,25,25,0' -- selectable at input (default: TP_CLOSE_PCTS in .env, currently "
+             f"'{settings.tp_close_pcts}'). TP4 always closes 100%% of whatever remains "
+             "regardless of its own configured share. See trade_manager.py's partial-close rules.",
+    )
+    parser.add_argument(
+        "--max-consecutive-losses", type=int, default=None,
+        help="Circuit breaker (cdcx/circuit_breaker.py): pause new entries for this symbol "
+             f"after this many closed losing trades in a row (default: "
+             f"{circuit_breaker.DEFAULT_MAX_CONSECUTIVE_LOSSES}). Pass 0 to disable this trigger.",
+    )
+    parser.add_argument(
+        "--max-drawdown-pct", type=float, default=None,
+        help="Circuit breaker: pause new entries once this symbol's realized equity has drawn "
+             f"down more than this %% from its running peak (default: "
+             f"{circuit_breaker.DEFAULT_MAX_DRAWDOWN_PCT}). Pass 0 to disable this trigger.",
     )
     parser.add_argument(
         "--news-imminent", action="store_true",
@@ -115,6 +168,51 @@ def build_parser() -> argparse.ArgumentParser:
         "--list-trades", action="store_true",
         help="Print the current state of every tracked paper trade (open and closed), "
              "without fetching new prices.",
+    )
+    parser.add_argument(
+        "--record-live-close", action="store_true",
+        help="Manually record the realized outcome of a CLOSED live position into "
+             "trading/live/results/ (see cdcx/journal.py) -- nothing in this project "
+             "polls the exchange for fills/closes automatically, so this has to be "
+             "supplied by you. Feeds --export-tax. Requires --symbol, --direction, "
+             "--quantity, --entry-price, --exit-price, --opened-at, --closed-at.",
+    )
+    parser.add_argument(
+        "--direction", choices=["long", "short"], default=None,
+        help="Position direction, for --record-live-close.",
+    )
+    parser.add_argument(
+        "--quantity", type=float, default=None, help="Position size, for --record-live-close.",
+    )
+    parser.add_argument(
+        "--entry-price", type=float, default=None, help="Fill price at open, for --record-live-close.",
+    )
+    parser.add_argument(
+        "--exit-price", type=float, default=None, help="Fill price at close, for --record-live-close.",
+    )
+    parser.add_argument(
+        "--opened-at", default=None,
+        help="Date/time the position was opened, e.g. 2026-08-01 or 2026-08-01T14:30:00 "
+             "(UTC). For --record-live-close.",
+    )
+    parser.add_argument(
+        "--closed-at", default=None,
+        help="Date/time the position was closed, same format as --opened-at. "
+             "For --record-live-close.",
+    )
+    parser.add_argument(
+        "--fees", type=float, default=0.0, help="Total fees paid on the round trip, for --record-live-close.",
+    )
+    parser.add_argument(
+        "--notes", default="", help="Free-text notes to attach, for --record-live-close.",
+    )
+    parser.add_argument(
+        "--export-tax", action="store_true",
+        help="Read every closed live trade from trading/live/results/ (written by "
+             "--record-live-close) and write a Form-8949-style CSV, a Schedule D "
+             "short/long-term summary, a CPA summary report, and an SSA documentary "
+             "activity record into trading/tax_records/ and trading/ssa_records/. "
+             "NOT tax or legal advice -- have a CPA review every export.",
     )
     parser.add_argument(
         "--backtrader", action="store_true",
@@ -185,6 +283,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--predictions-limit", type=int, default=20,
         help="Max events returned by --predictions / --predictions-search (default: 20).",
+    )
+    parser.add_argument(
+        "--leverage", action="store_true",
+        help="Look up the exchange's real min/max leverage for --symbol's USD-margined "
+             "perpetual (e.g. BTC/USDT -> BTCUSD-PERP) and exit. Useful before --live, "
+             "since this tool never sets leverage itself -- see live_execution.py.",
     )
     return parser
 
@@ -265,6 +369,21 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict) -> bool
     )
     print()
     print(structure_strategy.format_structure_setup(setup))
+
+    # Advisory-only A+ grade (setup_grade.py) -- labels setup quality for
+    # this printed report; never consulted by no_trade_gate.py. Best-effort:
+    # any failure here (e.g. too few bars for a fresh ATR read) just skips
+    # this section rather than breaking the structure-setup report above it.
+    try:
+        from . import setup_grade as setup_grade_module
+        from .indicators import atr_state as atr_state_module
+
+        atr_transition = atr_state_module.analyze(h4_data.highs, h4_data.lows, h4_data.closes)
+        print()
+        print(setup_grade_module.format_setup_grade(setup_grade_module.grade_setup(setup, atr_transition)))
+    except Exception as exc:
+        print(f"(setup grade unavailable: {exc})", file=sys.stderr)
+
     return True
 
 
@@ -302,13 +421,20 @@ def _handle_backtrader(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_single(symbol: str, timeframe: str, limit: int):
+def _run_single(
+    symbol: str, timeframe: str, limit: int,
+    atr_multiplier_override: float = None, tp_ratios_override: str = None, tp_mode_override: str = None,
+):
     """Run analysis for one timeframe. Returns the TradeSignal, or None on error
     (after printing the error to stderr)."""
     from . import engine  # deferred: requires ccxt, not needed for trade-listing commands
 
     try:
-        return engine.analyze(symbol=symbol, timeframe=timeframe, limit=limit)
+        return engine.analyze(
+            symbol=symbol, timeframe=timeframe, limit=limit,
+            atr_multiplier_override=atr_multiplier_override, tp_ratios_override=tp_ratios_override,
+            tp_mode_override=tp_mode_override,
+        )
     except Exception as exc:  # surface a clean error instead of a raw traceback
         print(f"Error running analysis for {symbol} @ {timeframe}: {exc}", file=sys.stderr)
         return None
@@ -332,6 +458,9 @@ def _print_summary_table(symbol: str, results: dict[str, object]) -> None:
 def _handle_execute(
     symbol: str, balance: float, risk_pct: float, results: dict[str, object], limit: int,
     live: bool = False, instrument_name_override: str = None, news_imminent: bool = False,
+    max_consecutive_losses: int = None, max_drawdown_pct: float = None,
+    atr_multiplier_override: float = None, tp_ratios_override: str = None, tp_close_pcts_override: str = None,
+    confirmed_no_withdraw_permission: bool = False,
 ) -> int:
     # A standalone timeframe marked TRANSITIONAL is diagnostic, not an
     # executable directional confirmation. Exclude those raw signals from
@@ -356,6 +485,7 @@ def _handle_execute(
             from .exchange.cryptocom import CryptoComExchange
             from .indicators import atr_ema_variant1, adx as adx_module, rsi as rsi_module, volume_profile_fixed
 
+            journal.write_signal(symbol, range_tf, range_signal)
             account_balance = balance if balance is not None else settings.default_account_balance
             effective_risk_pct = risk_pct if risk_pct is not None else settings.risk_pct_per_trade
             exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
@@ -371,14 +501,18 @@ def _handle_execute(
                 symbol, range_signal, account_balance, effective_risk_pct,
                 rsi_series, vp_result, pattern_matches, atr_series, adx_series[-1], news_imminent,
                 live, instrument_name_override,
+                max_consecutive_losses=max_consecutive_losses, max_drawdown_pct=max_drawdown_pct,
+                atr_multiplier_override=atr_multiplier_override, tp_close_pcts_override=tp_close_pcts_override,
+                confirmed_no_withdraw_permission=confirmed_no_withdraw_permission,
             )
 
     if len(signals_by_tf) < 2:
-        print(
+        reason = (
             "Not enough tradeable timeframe reads to evaluate trend confluence "
-            f"(got {len(signals_by_tf)}, need at least 2 of 1h/4h/1d/1w). No trade planned.",
-            file=sys.stderr,
+            f"(got {len(signals_by_tf)}, need at least 2 of 1h/4h/1d/1w)."
         )
+        print(f"{reason} No trade planned.", file=sys.stderr)
+        journal.write_rejected(symbol, "confluence", reason)
         return 1
 
     confluence = evaluate_confluence(signals_by_tf)
@@ -392,9 +526,11 @@ def _handle_execute(
 
     if not confluence.should_execute:
         print("No trade planned.")
+        journal.write_rejected(symbol, "confluence", confluence.label, confluence)
         return 0
 
     entry_signal = results[confluence.entry_timeframe]
+    journal.write_signal(symbol, confluence.entry_timeframe, entry_signal)
     direction = confluence.direction  # "long" | "short"
     account_balance = balance if balance is not None else settings.default_account_balance
     effective_risk_pct = risk_pct if risk_pct is not None else settings.risk_pct_per_trade
@@ -417,6 +553,7 @@ def _handle_execute(
 
     if regime_result.regime == "transitional":
         print("\nMarket Regime is TRANSITIONAL -- No Trade, regardless of confluence/checklist.")
+        journal.write_rejected(symbol, "regime", "transitional", regime_result)
         return 0
 
     # Shared raw data needed by the no-trade filter and (for ranging) the
@@ -431,6 +568,9 @@ def _handle_execute(
             symbol, direction, entry_signal, account_balance, effective_risk_pct,
             signals_by_tf, confluence, atr_series, adx_value, news_imminent,
             live, instrument_name_override,
+            max_consecutive_losses=max_consecutive_losses, max_drawdown_pct=max_drawdown_pct,
+            atr_multiplier_override=atr_multiplier_override, tp_close_pcts_override=tp_close_pcts_override,
+            confirmed_no_withdraw_permission=confirmed_no_withdraw_permission,
         )
 
     # regime_result.regime == "ranging"
@@ -442,6 +582,9 @@ def _handle_execute(
         symbol, entry_signal, account_balance, effective_risk_pct,
         rsi_series, vp_result, pattern_matches, atr_series, adx_value, news_imminent,
         live, instrument_name_override,
+        max_consecutive_losses=max_consecutive_losses, max_drawdown_pct=max_drawdown_pct,
+        atr_multiplier_override=atr_multiplier_override, tp_close_pcts_override=tp_close_pcts_override,
+        confirmed_no_withdraw_permission=confirmed_no_withdraw_permission,
     )
 
 
@@ -449,6 +592,8 @@ def _handle_trending_path(
     symbol, direction, entry_signal, account_balance, effective_risk_pct,
     signals_by_tf, confluence, atr_series, adx_value, news_imminent,
     live, instrument_name_override,
+    max_consecutive_losses=None, max_drawdown_pct=None, atr_multiplier_override=None,
+    tp_close_pcts_override=None, confirmed_no_withdraw_permission=False,
 ) -> int:
     checklist = evaluate_entry_checklist(
         entry_signal, direction, risk_pct=effective_risk_pct, symbol=symbol, atr_series=atr_series,
@@ -458,6 +603,7 @@ def _handle_trending_path(
 
     if not checklist.all_passed:
         print("\nEntry checklist not fully satisfied -- no trade planned.")
+        journal.write_rejected(symbol, "entry_checklist", "entry checklist not fully satisfied", checklist)
         return 0
 
     # "Avoid entering after an extended move" -- bollinger_bands.py already
@@ -467,13 +613,16 @@ def _handle_trending_path(
     if "Extended" in bb_label:
         print(f"\nOverextension guard tripped: Bollinger Bands reads '{bb_label}'.")
         print("Avoiding entry after an extended move -- no trade planned. Wait for a pullback.")
+        journal.write_rejected(symbol, "overextension_guard", bb_label)
         return 0
 
     plan = risk.build_position_plan(
         symbol=symbol, direction=direction, entry_price=entry_signal.entry, atr=entry_signal.atr,
         account_balance=account_balance, risk_pct=effective_risk_pct,
+        atr_multiplier_override=atr_multiplier_override,
     )
     tp_levels = [entry_signal.take_profits[f"TP{i}"] for i in range(1, 5)]
+    journal.write_simulated_order(symbol, direction, plan, tp_levels)
 
     nt_result = no_trade_filter.check_no_trade_filter(
         adx_value=adx_value,
@@ -487,6 +636,7 @@ def _handle_trending_path(
     print(no_trade_filter.format_no_trade_filter(nt_result))
     if nt_result.blocked:
         print("\nNo-trade filter blocked this setup -- no trade planned.")
+        journal.write_rejected(symbol, "no_trade_filter", "no-trade filter blocked this setup", nt_result)
         return 0
 
     confidence_result = confidence_scoring.calculate_weighted_confidence(signals_by_tf, direction, entry_signal)
@@ -496,9 +646,15 @@ def _handle_trending_path(
     print()
     print(risk.format_position_plan(plan))
 
+    timeframe_directions = {tf: paper_approval.direction_label(sig) for tf, sig in signals_by_tf.items()}
+
     return _open_trade_and_maybe_go_live(
         symbol, direction, plan, tp_levels, confluence.agreeing_timeframes, confluence.confluence_score,
-        live, instrument_name_override,
+        live, instrument_name_override, entry_signal=entry_signal, risk_pct=effective_risk_pct,
+        timeframe_directions=timeframe_directions,
+        max_consecutive_losses=max_consecutive_losses, max_drawdown_pct=max_drawdown_pct,
+        tp_close_pcts_override=tp_close_pcts_override,
+        confirmed_no_withdraw_permission=confirmed_no_withdraw_permission,
     )
 
 
@@ -506,6 +662,8 @@ def _handle_ranging_path(
     symbol, entry_signal, account_balance, effective_risk_pct,
     rsi_series, vp_result, pattern_matches, atr_series, adx_value, news_imminent,
     live, instrument_name_override,
+    max_consecutive_losses=None, max_drawdown_pct=None, atr_multiplier_override=None,
+    tp_close_pcts_override=None, confirmed_no_withdraw_permission=False,
 ) -> int:
     setup = ranging_strategy.evaluate_ranging_setup(
         price=entry_signal.entry, rsi_series=rsi_series, poc=vp_result.poc,
@@ -525,15 +683,18 @@ def _handle_ranging_path(
 
     if not setup.valid:
         print("\nNo qualifying ranging setup -- no trade planned.")
+        journal.write_rejected(symbol, "ranging_setup", "no qualifying ranging setup", setup)
         return 0
 
     direction = setup.direction
     plan = risk.build_position_plan(
         symbol=symbol, direction=direction, entry_price=entry_signal.entry, atr=entry_signal.atr,
         account_balance=account_balance, risk_pct=effective_risk_pct,
+        atr_multiplier_override=atr_multiplier_override,
     )
     # Ranging targets replace the ATR-extension Fibonacci ladder: TP1 = POC, TP2 = opposite range edge.
     tp_levels = [setup.tp1, setup.tp2]
+    journal.write_simulated_order(symbol, direction, plan, tp_levels)
 
     # The ranging path doesn't require multi-timeframe agreement (per spec),
     # so higher_timeframes_agree is deliberately not part of its no-trade
@@ -551,6 +712,7 @@ def _handle_ranging_path(
     print(no_trade_filter.format_no_trade_filter(nt_result))
     if nt_result.blocked:
         print("\nNo-trade filter blocked this setup -- no trade planned.")
+        journal.write_rejected(symbol, "no_trade_filter", "no-trade filter blocked this setup", nt_result)
         return 0
 
     print()
@@ -558,45 +720,134 @@ def _handle_ranging_path(
 
     return _open_trade_and_maybe_go_live(
         symbol, direction, plan, tp_levels, [], 0, live, instrument_name_override,
+        entry_signal=entry_signal, risk_pct=effective_risk_pct,
+        max_consecutive_losses=max_consecutive_losses, max_drawdown_pct=max_drawdown_pct,
+        tp_close_pcts_override=tp_close_pcts_override,
+        confirmed_no_withdraw_permission=confirmed_no_withdraw_permission,
     )
 
 
 def _open_trade_and_maybe_go_live(
     symbol, direction, plan, tp_levels, confluence_timeframes, confluence_score,
-    live, instrument_name_override,
+    live, instrument_name_override, entry_signal=None, risk_pct=None, timeframe_directions=None,
+    max_consecutive_losses=None, max_drawdown_pct=None, tp_close_pcts_override=None,
+    confirmed_no_withdraw_permission=False,
 ) -> int:
+    # Portfolio-level throttle (circuit_breaker.py), checked BEFORE opening
+    # -- distinct from trade_manager's own per-trade rules. --max-*-losses/
+    # --max-drawdown-pct of 0 explicitly disables that trigger; unset uses
+    # circuit_breaker.py's defaults.
+    cb_max_losses = None if max_consecutive_losses == 0 else (
+        max_consecutive_losses if max_consecutive_losses is not None
+        else circuit_breaker.DEFAULT_MAX_CONSECUTIVE_LOSSES
+    )
+    cb_max_drawdown = None if max_drawdown_pct == 0 else (
+        max_drawdown_pct if max_drawdown_pct is not None
+        else circuit_breaker.DEFAULT_MAX_DRAWDOWN_PCT
+    )
+    if cb_max_losses is not None or cb_max_drawdown is not None:
+        cb_result = circuit_breaker.check_circuit_breaker_for_symbol(
+            symbol,
+            max_consecutive_losses=cb_max_losses if cb_max_losses is not None else float("inf"),
+            max_drawdown_pct=cb_max_drawdown if cb_max_drawdown is not None else float("inf"),
+        )
+        print()
+        print(circuit_breaker.format_circuit_breaker(cb_result))
+        if cb_result.tripped:
+            print("\nCircuit breaker tripped -- no trade opened.")
+            journal.write_rejected(symbol, "circuit_breaker", cb_result.reason, cb_result)
+            return 0
+
     trade, message = trade_manager.open_trade(
         symbol=symbol, direction=direction, entry_price=plan.entry_price, atr=plan.atr,
         stop_price=plan.stop_price, tp_levels=tp_levels, position_size=plan.position_size,
         risk_amount=plan.risk_amount, account_balance=plan.account_balance,
         confluence_timeframes=confluence_timeframes, confluence_score=confluence_score,
+        tp_close_pcts=risk.resolve_tp_close_pcts(tp_close_pcts_override),
     )
     print()
     print(message)
     if trade is not None:
+        if entry_signal is not None:
+            approval = paper_approval.build_paper_trade_approval(
+                symbol, direction, entry_signal, plan, tp_levels,
+                timeframe_directions=timeframe_directions, risk_pct=risk_pct,
+                tp_close_pcts=trade.tp_close_pcts, result="PASS",
+            )
+            print()
+            print(paper_approval.format_paper_trade_approval(approval))
         print(trade_manager.format_trade(trade))
         print(
             "\nNote: this is a locally tracked PAPER trade only -- no live order "
             "was placed. Run `python -m cdcx --update-trades` to check it against "
             "fresh prices and apply the trailing-stop rules."
         )
+        journal.write_simulated_result(symbol, trade, result="PASS")
         if live:
-            _handle_live_order(symbol, direction, plan, tp_levels[0], instrument_name_override)
+            _handle_live_order(
+                symbol, direction, plan, tp_levels, instrument_name_override,
+                entry_signal=entry_signal, timeframe_confirmed=True,
+                confirmed_no_withdraw_permission=confirmed_no_withdraw_permission,
+            )
+    else:
+        journal.write_rejected(symbol, "trade_manager", message)
 
     return 0
 
 
-def _handle_live_order(symbol, direction, plan, tp1_price, instrument_name_override) -> None:
+def _detect_duplicate_live_order(symbol: str, window_seconds: float = 300.0) -> bool:
+    """True if a live order was already sent for this symbol within the last
+    `window_seconds` -- catches an accidental double-submission (e.g. the
+    same command run twice in quick succession) before it becomes a second
+    real order. Reads the journal (trading/live/executions/), not the
+    exchange -- see journal.py."""
+    import time as _time
+    now = _time.time()
+    for record in journal.load_stage("live_execution"):
+        if record.get("symbol") == symbol and (now - record.get("written_at", 0)) <= window_seconds:
+            return True
+    return False
+
+
+def _handle_live_order(
+    symbol, direction, plan, tp_levels, instrument_name_override,
+    entry_signal=None, timeframe_confirmed=True, confirmed_no_withdraw_permission=False,
+) -> None:
     from . import live_execution
+    from . import no_trade_gate
+    from .exchange.cryptocom import CryptoComExchange
+    import time as _time
 
     instrument_name = instrument_name_override or live_execution.derive_instrument_name(symbol)
+
+    # Crypto.com's stock/RWA perpetuals (AAPLUSD-PERP, SPYUSD-PERP, etc.)
+    # reject a plain cross-margin order outright (error 623
+    # INSTRUMENT_MUST_USE_ISOLATED_MARGIN) -- detect that up front from the
+    # public instrument list so the dry-run below reflects what will
+    # actually happen, rather than surfacing the rejection only on send.
+    # Fails closed to cross-margin (False) if the lookup can't run at all
+    # (e.g. no network); a wrong guess either way is still caught by
+    # --dry-run before anything real is sent.
+    try:
+        isolated_margin = CryptoComExchange(
+            settings.cryptocom_api_key, settings.cryptocom_api_secret,
+        ).requires_isolated_margin(symbol)
+    except Exception as exc:
+        print(f"Warning: could not determine isolated-margin requirement ({exc}); assuming cross margin.")
+        isolated_margin = False
+    if isolated_margin:
+        print(f"{instrument_name} requires isolated margin -- attaching exec_inst: [ISOLATED_MARGIN].")
+
     order_list = live_execution.build_otoco_order_list(
         instrument_name=instrument_name,
         direction=direction,
         quantity=plan.position_size,
         stop_price=plan.stop_price,
-        take_profit_price=tp1_price,
+        take_profit_price=tp_levels[0],
+        isolated_margin=isolated_margin,
     )
+
+    journal.write_live_order(symbol, instrument_name, order_list)
 
     print()
     print("Checking `cdcx` (the real exchange CLI) is reachable and previewing the order (--dry-run)...")
@@ -608,6 +859,7 @@ def _handle_live_order(symbol, direction, plan, tp1_price, instrument_name_overr
             "Crypto.com Exchange CLI first. No order was attempted.",
             file=sys.stderr,
         )
+        journal.write_rejected(symbol, "live_dry_run", "cdcx binary not found on PATH")
         return
 
     print(live_execution.format_bracket_preview(instrument_name, order_list, result))
@@ -618,6 +870,7 @@ def _handle_live_order(symbol, direction, plan, tp1_price, instrument_name_overr
             "before proceeding. Nothing was sent.",
             file=sys.stderr,
         )
+        journal.write_rejected(symbol, "live_dry_run", "dry-run did not return success", result)
         return
 
     print(
@@ -629,12 +882,38 @@ def _handle_live_order(symbol, direction, plan, tp1_price, instrument_name_overr
     except (EOFError, KeyboardInterrupt):
         confirmation = ""
 
-    if confirmation != "YES":
-        print("Not confirmed -- no live order sent.")
+    # --- FINAL NO-TRADE GATE (no_trade_gate.py) -- the absolute last check,
+    # re-validating everything from scratch right at the point of no return
+    # rather than trusting every earlier gate still holds. ANY single
+    # failure blocks the order outright; every reason is always shown. ---
+    data_age_seconds = (_time.time() - entry_signal.computed_at) if entry_signal is not None else None
+    gate_result = no_trade_gate.check_no_trade_gate(
+        paper_trade_result="PASS",  # a paper trade was already opened successfully to reach this point
+        human_approval=(confirmation == "YES"),
+        risk_pct=plan.risk_pct,
+        stop_loss=plan.stop_price,
+        take_profits=tp_levels,
+        timeframe_confirmed=timeframe_confirmed,
+        withdrawal_permission_confirmed_disabled=confirmed_no_withdraw_permission,
+        duplicate_order_detected=_detect_duplicate_live_order(symbol),
+        data_age_seconds=data_age_seconds,
+        timeframe=getattr(entry_signal, "timeframe", "") or "",
+        max_risk_pct=settings.risk_pct_per_trade,
+        max_data_staleness_bars=settings.max_data_staleness_bars,
+        required_tp_count=len(tp_levels),
+    )
+    print()
+    print(no_trade_gate.format_no_trade_gate(gate_result))
+
+    if not gate_result.passed:
+        journal.write_rejected(symbol, "no_trade_gate", "; ".join(gate_result.failures), gate_result)
         return
+
+    journal.write_approved(symbol, order_list, confirmed_by="human_cli")
 
     print("\nSending live order...")
     result = live_execution.send_bracket_live(result)
+    journal.write_live_execution(symbol, result)
     print(f"Command: {' '.join(result.live_command)}")
     print(result.live_stdout or "(empty stdout)")
     if result.live_stderr:
@@ -697,6 +976,71 @@ def _handle_list_trades() -> int:
     return 0
 
 
+def _parse_datetime_arg(value: str) -> float:
+    """Accepts 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS' (UTC), or a raw unix
+    timestamp, and returns a unix timestamp (seconds)."""
+    from datetime import datetime, timezone
+
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, fmt).replace(tzinfo=timezone.utc).timestamp()
+        except ValueError:
+            continue
+    raise ValueError(
+        f"Could not parse '{value}' -- use YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, or a unix timestamp."
+    )
+
+
+def _handle_record_live_close(args: argparse.Namespace) -> int:
+    missing = [
+        name for name, value in [
+            ("--direction", args.direction), ("--quantity", args.quantity),
+            ("--entry-price", args.entry_price), ("--exit-price", args.exit_price),
+            ("--opened-at", args.opened_at), ("--closed-at", args.closed_at),
+        ] if value is None
+    ]
+    if missing:
+        print(f"--record-live-close requires: {', '.join(missing)}", file=sys.stderr)
+        return 1
+
+    try:
+        opened_at = _parse_datetime_arg(args.opened_at)
+        closed_at = _parse_datetime_arg(args.closed_at)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+
+    path = journal.write_live_result(
+        symbol=args.symbol, direction=args.direction, quantity=args.quantity,
+        entry_price=args.entry_price, exit_price=args.exit_price,
+        opened_at=opened_at, closed_at=closed_at, fees=args.fees, notes=args.notes,
+    )
+    print(f"Recorded closed live trade -> {path}")
+    print("Run --export-tax to regenerate the Form 8949 / Schedule D / CPA / SSA exports.")
+    return 0
+
+
+def _handle_export_tax() -> int:
+    from . import tax_export
+
+    paths = tax_export.export_all()
+    trades = tax_export.load_closed_trades()
+    print(tax_export.format_schedule_d_summary(trades))
+    print()
+    print(tax_export.format_cpa_summary(trades))
+    print()
+    print(tax_export.format_ssa_record(trades))
+    print()
+    print("Wrote:")
+    for kind, path in paths.items():
+        print(f"  {kind:<20} {path}")
+    return 0
+
+
 def _handle_predictions_list(kind: str, limit: int) -> int:
     from .predictions import PredictionsClient, PredictionsNotFound, PredictionsRateLimited, format_events
 
@@ -750,6 +1094,24 @@ def _handle_predictions_contract(ticker: str) -> int:
     return 0
 
 
+def _handle_leverage(symbol: str) -> int:
+    from .exchange.cryptocom import CryptoComExchange
+
+    exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
+    try:
+        limits = exchange.fetch_perp_leverage_limits(symbol)
+    except KeyError:
+        print(f"No USD-margined perpetual listed for {symbol} on Crypto.com.", file=sys.stderr)
+        return 1
+
+    print(f"{limits.instrument_id}: {limits.min_leverage:g}x - {limits.max_leverage:g}x leverage")
+    print(
+        "Reminder: this tool never sets leverage itself (create-otoco has no leverage "
+        "field) -- configure it on your account via `cdcx trade leverage` before --live."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -758,11 +1120,29 @@ def main(argv: list[str] | None = None) -> int:
         print("--live requires --execute (and --timeframes with 2+ of 1h/4h/1d/1w).", file=sys.stderr)
         return 1
 
+    if args.live and settings.trading_mode != "LIVE":
+        print(
+            "--live refused: TRADING_MODE is not set to LIVE (currently "
+            f"'{settings.trading_mode}'). This is a software-level switch, independent "
+            "of --live and the typed-YES confirmation -- set TRADING_MODE=LIVE in .env "
+            "(or the environment) if you actually intend to send a real order. This "
+            "exists specifically so a stray --live on a machine still configured for "
+            "paper testing can't accidentally place one.",
+            file=sys.stderr,
+        )
+        return 1
+
     if args.list_trades:
         return _handle_list_trades()
 
     if args.update_trades:
         return _handle_update_trades()
+
+    if args.record_live_close:
+        return _handle_record_live_close(args)
+
+    if args.export_tax:
+        return _handle_export_tax()
 
     if args.predictions is not None:
         return _handle_predictions_list(args.predictions, args.predictions_limit)
@@ -772,6 +1152,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.predictions_contract:
         return _handle_predictions_contract(args.predictions_contract)
+
+    if args.leverage:
+        return _handle_leverage(args.symbol)
 
     if args.backtrader:
         result = _handle_backtrader(args)
@@ -791,7 +1174,11 @@ def main(argv: list[str] | None = None) -> int:
         structure_cache = {}
 
         for tf in timeframes:
-            signal = _run_single(args.symbol, tf, args.limit)
+            signal = _run_single(
+                args.symbol, tf, args.limit,
+                atr_multiplier_override=args.atr_multiplier, tp_ratios_override=args.tp_ratios,
+                tp_mode_override=args.tp_mode,
+            )
             results[tf] = signal
             if signal is not None:
                 any_success = True
@@ -810,6 +1197,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.symbol, args.balance, args.risk_pct, results, args.limit,
                 live=args.live, instrument_name_override=args.instrument_name,
                 news_imminent=args.news_imminent,
+                max_consecutive_losses=args.max_consecutive_losses, max_drawdown_pct=args.max_drawdown_pct,
+                atr_multiplier_override=args.atr_multiplier,
+                tp_ratios_override=args.tp_ratios, tp_close_pcts_override=args.tp_close_pcts,
             )
         else:
             result = 0 if any_success else 1
@@ -823,7 +1213,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # single-timeframe path (backwards compatible)
     timeframe = args.timeframe or settings.default_timeframe
-    signal = _run_single(args.symbol, timeframe, args.limit)
+    signal = _run_single(
+        args.symbol, timeframe, args.limit,
+        atr_multiplier_override=args.atr_multiplier, tp_ratios_override=args.tp_ratios,
+        tp_mode_override=args.tp_mode,
+    )
     if signal is None:
         return 1
 

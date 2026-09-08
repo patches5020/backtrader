@@ -1,3 +1,5 @@
+import pytest
+
 from cdcx.engine import analyze_ohlcv
 from cdcx.exchange.cryptocom import OHLCV
 
@@ -153,3 +155,95 @@ def test_neutral_ema_is_not_coerced_to_bullish_or_bearish_by_engine_direction_ru
     else:
         assert signal.stop_loss == signal.entry
         assert signal.risk_reward_ratio is None
+
+
+def test_atr_multiplier_resolves_per_symbol_and_matches_stop_distance():
+    # regression: engine.py's stop_distance used to read settings.atr_stop_multiplier
+    # directly (a flat global), never per-symbol -- both BTC and XRP currently
+    # resolve to 1.5x (see risk.resolve_atr_multiplier / config.atr_multiplier_overrides
+    # -- a backtest sweep found XRP's empirical optimum was a tighter 1.0x, deliberately
+    # overridden back to 1.5 at the user's request). Whatever multiplier is used must be
+    # the one reported on the signal AND the one that actually produced stop_loss, so
+    # the two can never silently disagree.
+    import random
+    random.seed(6)
+    closes = [100 + i * 0.3 + random.uniform(-0.4, 0.4) for i in range(80)]
+
+    btc_data = _make_ohlcv(closes)
+    btc_signal = analyze_ohlcv("BTC/USDT", btc_data)
+    xrp_data = _make_ohlcv(closes)
+    xrp_signal = analyze_ohlcv("XRP/USD", xrp_data)
+
+    assert btc_signal.atr_multiplier == 1.5
+    assert xrp_signal.atr_multiplier == 1.5
+
+    for signal in (btc_signal, xrp_signal):
+        expected_distance = signal.atr * signal.atr_multiplier
+        actual_distance = abs(signal.entry - signal.stop_loss)
+        # stop_loss is rounded to 6 significant figures in the constructor -- allow that much slack
+        assert actual_distance == pytest.approx(expected_distance, abs=0.01)
+
+
+def test_atr_multiplier_still_resolves_per_symbol_when_actually_configured_differently(monkeypatch):
+    # The per-symbol resolution mechanism itself still genuinely differentiates
+    # by symbol -- BTC and XRP simply happen to both be set to 1.5 by default
+    # right now. Proven here by temporarily configuring them differently.
+    from cdcx.config import settings
+    original = settings.atr_multiplier_overrides
+    settings.atr_multiplier_overrides = "BTC:1.5,XRP:1.0"
+    try:
+        import random
+        random.seed(6)
+        closes = [100 + i * 0.3 + random.uniform(-0.4, 0.4) for i in range(80)]
+        btc_signal = analyze_ohlcv("BTC/USDT", _make_ohlcv(closes))
+        xrp_signal = analyze_ohlcv("XRP/USD", _make_ohlcv(closes))
+        assert btc_signal.atr_multiplier == 1.5
+        assert xrp_signal.atr_multiplier == 1.0
+    finally:
+        settings.atr_multiplier_overrides = original
+
+
+def test_atr_multiplier_override_beats_per_symbol_default():
+    import random
+    random.seed(6)
+    closes = [100 + i * 0.3 + random.uniform(-0.4, 0.4) for i in range(80)]
+    data = _make_ohlcv(closes)
+
+    signal = analyze_ohlcv("BTC/USDT", data, atr_multiplier_override=4.0)
+    assert signal.atr_multiplier == 4.0
+
+
+def test_low_priced_asset_tp_ladder_stays_distinct_and_ordered():
+    # regression: engine.py used to round stop_loss/take_profits to a flat
+    # 2 decimal places regardless of price magnitude -- fine for BTC
+    # (~$65,000), but confirmed live on XRP/USD (~$1) to collapse 3 of 4 TP
+    # levels to the identical rounded price and risk inverting TP4 past
+    # TP1-3, breaking trade_manager.py's "TP levels are ordered" invariant.
+    import random
+    random.seed(9)
+    # a low, tightly-clustered price series mimicking XRP's ~$1 scale
+    closes = [1.00 + i * 0.0003 + random.uniform(-0.0004, 0.0004) for i in range(80)]
+    data = _make_ohlcv(closes)
+    signal = analyze_ohlcv("XRP/USD", data)
+
+    tps = list(signal.take_profits.values())
+    assert len(set(tps)) == len(tps), f"TP levels collapsed to duplicates: {tps}"
+
+    # TP levels must move strictly away from entry in trade direction, in order
+    distances = [abs(tp - signal.entry) for tp in tps]
+    assert distances == sorted(distances), f"TP distances not monotonically increasing: {tps}"
+
+
+def test_round_price_scales_precision_to_magnitude():
+    from cdcx.engine import _round_price
+    assert _round_price(65432.987, sig_figs=6) == 65433.0
+    assert _round_price(1.0012345, sig_figs=6) == 1.00123
+    assert _round_price(0.00123456, sig_figs=6) == 0.00123456
+    assert _round_price(0.0, sig_figs=6) == 0.0
+
+
+def test_round_price_keeps_distinct_close_xrp_style_values_distinct():
+    from cdcx.engine import _round_price
+    raw = [0.991702, 0.989975, 0.987384, 0.981772]
+    rounded = [_round_price(v) for v in raw]
+    assert len(set(rounded)) == 4
