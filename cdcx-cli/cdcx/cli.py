@@ -314,11 +314,18 @@ def _fetch_structure_map(symbol: str, timeframe: str, limit: int):
     exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
     try:
         data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        # compute_structure_map runs regime/indicator analysis (EMA, ADX, etc.)
+        # over that data, which can itself raise -- e.g. ValueError on a
+        # recently-listed instrument (confirmed live: SPCX's 1w history is
+        # under 17 candles, so calculate_ema(17) raises) -- not just the fetch
+        # above. Catching both here, rather than only the fetch, keeps this
+        # consistent with _run_single's handling of the exact same failure
+        # mode on the main confluence path.
+        smap = structure_levels.compute_structure_map(data.highs, data.lows, data.closes, data.volumes)
     except Exception as exc:
         print(f"Error fetching candles for structure analysis of {symbol} @ {timeframe}: {exc}", file=sys.stderr)
         return None, None
 
-    smap = structure_levels.compute_structure_map(data.highs, data.lows, data.closes, data.volumes)
     return smap, data
 
 

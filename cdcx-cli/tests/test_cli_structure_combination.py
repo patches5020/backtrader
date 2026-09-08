@@ -170,3 +170,35 @@ def test_timeframes_execute_run_structure_section_prints_after_execute_plan(monk
     assert result == 0
     assert order == ["execute", "structure_setup"]
     assert out.index("EXECUTE PLAN HERE") < out.index("FINAL SETUP SECTION")
+
+
+def test_fetch_structure_map_catches_compute_errors_not_just_fetch_errors(monkeypatch, capsys):
+    """Regression test: compute_structure_map (regime/indicator analysis over
+    the fetched candles) can itself raise -- e.g. ValueError on a recently-
+    listed instrument with too little history for a 17-period EMA (confirmed
+    live: SPCX's 1w history is under 17 candles) -- not just fetch_ohlcv.
+    Previously only the fetch call was wrapped, so this crashed main() with a
+    raw traceback instead of the same clean per-timeframe error every other
+    path (e.g. _run_single) already prints for this exact failure mode."""
+    from cdcx.exchange import cryptocom as cryptocom_module
+
+    class _FakeExchange:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def fetch_ohlcv(self, symbol, timeframe, limit):
+            return _fake_ohlcv_data(timeframe)  # fetch succeeds --
+
+    monkeypatch.setattr(cryptocom_module, "CryptoComExchange", _FakeExchange)
+
+    def _raise_insufficient_history(*args, **kwargs):
+        raise ValueError("Need at least 17 closes to compute EMA(17)")  # -- compute fails
+
+    monkeypatch.setattr(cli.structure_levels, "compute_structure_map", _raise_insufficient_history)
+
+    smap, data = cli._fetch_structure_map("SPCX", "1w", 1000)
+
+    assert smap is None and data is None
+    err = capsys.readouterr().err
+    assert "Error fetching candles for structure analysis of SPCX @ 1w" in err
+    assert "Need at least 17 closes" in err
