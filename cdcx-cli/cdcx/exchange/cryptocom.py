@@ -179,8 +179,9 @@ class CryptoComExchange:
         live_execution.derive_instrument_name). Works the same for
         stock/RWA perpetuals (e.g. "AAPL/USDT") since Crypto.com lists them
         under the identical PERPETUAL_SWAP inst_type -- only `product_type`
-        in the raw instrument data distinguishes them, which ccxt doesn't
-        surface, so no special-casing is needed here.
+        in the raw instrument data distinguishes them (see
+        requires_isolated_margin below), and leverage limits don't depend
+        on it, so no special-casing is needed here.
 
         Confirmed live: ccxt's unified swap symbol for Crypto.com's
         USD-margined perps is "{BASE}/USD:USD" (e.g. "XRP/USD:USD" ->
@@ -200,6 +201,44 @@ class CryptoComExchange:
             min_leverage=float(limits.get("min") or 1.0),
             max_leverage=float(limits.get("max") or market.get("info", {}).get("max_leverage", 1)),
         )
+
+    def requires_isolated_margin(self, symbol: str) -> bool:
+        """
+        True if `symbol`'s USD-margined perpetual must be traded on isolated
+        margin -- i.e. it's a real-world-asset contract (stock/equity-index/
+        commodity/pre-IPO) rather than a crypto-collateralized one.
+
+        Crypto.com's `inst_type` is `PERPETUAL_SWAP` for both (ccxt can't
+        tell them apart), but the raw instrument data ccxt preserves under
+        `market["info"]` carries a `product_type` field that does: confirmed
+        live via get-instruments, every PERPETUAL_SWAP is one of
+        `DIGITAL_CURRENCIES` (crypto -- cross margin is fine), `EQUITY`,
+        `EQUITY_IND`, `COMMODITIES`, or `PRE_IPO` (all RWA -- these reject a
+        plain cross-margin order with error 623
+        INSTRUMENT_MUST_USE_ISOLATED_MARGIN; see the cdcx-isolated-margin
+        skill). Treating "anything that isn't DIGITAL_CURRENCIES" as
+        isolated-required, rather than enumerating the RWA categories, means
+        a Crypto.com-added product type not seen here defaults to isolated
+        too -- the safer direction to be wrong in, since --dry-run always
+        runs first either way (see live_execution.py's safety model).
+
+        Returns False -- never guesses True -- if the instrument can't be
+        found (e.g. no network, or a base currency with no listed
+        perpetual) or carries no `product_type`, so callers fail closed to
+        plain cross-margin rather than attaching ISOLATED_MARGIN to
+        something that doesn't need or support it.
+        """
+        base = symbol.split("/")[0].upper()
+        swap_symbol = f"{base}/USD:USD"
+        try:
+            markets = self._exchange.load_markets()
+        except Exception:
+            return False
+        market = markets.get(swap_symbol)
+        if market is None:
+            return False
+        product_type = market.get("info", {}).get("product_type")
+        return product_type is not None and product_type != "DIGITAL_CURRENCIES"
 
 
 if __name__ == "__main__":

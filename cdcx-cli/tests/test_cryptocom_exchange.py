@@ -266,6 +266,45 @@ def test_fetch_ticker_price_falls_back_to_swap_symbol_for_stock_perpetuals():
     assert fake.ticker_calls == ["SPY/USD:USD"]
 
 
+def test_requires_isolated_margin_true_for_equity_product_type():
+    """Confirmed live via get-instruments: stock perpetuals (AAPL, SPY, NVDA,
+    etc.) share the crypto perps' PERPETUAL_SWAP inst_type -- only
+    `product_type` in the raw info distinguishes them."""
+    exchange = CryptoComExchange()
+    exchange._exchange = _FakeLeverageMarketsExchange({
+        "AAPL/USD:USD": {"id": "AAPLUSD-PERP", "info": {"product_type": "EQUITY"}},
+    })
+    assert exchange.requires_isolated_margin("AAPL/USDT") is True
+
+
+def test_requires_isolated_margin_false_for_digital_currencies():
+    exchange = CryptoComExchange()
+    exchange._exchange = _FakeLeverageMarketsExchange({
+        "BTC/USD:USD": {"id": "BTCUSD-PERP", "info": {"product_type": "DIGITAL_CURRENCIES"}},
+    })
+    assert exchange.requires_isolated_margin("BTC/USDT") is False
+
+
+def test_requires_isolated_margin_false_when_instrument_not_found():
+    """Fails closed to cross-margin rather than guessing -- a wrong False is
+    caught by --dry-run before anything real is sent; a wrong True would
+    attach exec_inst to an instrument that might not support it."""
+    exchange = CryptoComExchange()
+    exchange._exchange = _FakeLeverageMarketsExchange({})
+    assert exchange.requires_isolated_margin("NOTREAL/USD") is False
+
+
+def test_requires_isolated_margin_false_when_load_markets_raises():
+    """No network / exchange unreachable -- must not blow up the caller."""
+    class _RaisingExchange:
+        def load_markets(self):
+            raise ConnectionError("no network")
+
+    exchange = CryptoComExchange()
+    exchange._exchange = _RaisingExchange()
+    assert exchange.requires_isolated_margin("AAPL/USDT") is False
+
+
 def test_resolve_market_symbol_passes_through_when_neither_form_is_listed():
     """Neither the spot nor the swap symbol exists -- leave the symbol
     unchanged so ccxt raises its own (informative) BadSymbol."""

@@ -9,6 +9,12 @@ verified against the live schema (private/advanced/create-otoco):
         [0] entry:       {instrument_name, side, type: MARKET|LIMIT, quantity}
         [1] stop leg:     {instrument_name, side, type: STOP_LOSS, trigger_price, quantity}
         [2] target leg:   {instrument_name, side, type: TAKE_PROFIT, trigger_price, quantity}
+    Each leg additionally carries {exec_inst: ["ISOLATED_MARGIN"], isolation_id}
+    when the instrument requires isolated margin (Crypto.com's stock/RWA
+    perpetuals, e.g. AAPLUSD-PERP, SPYUSD-PERP -- see
+    cryptocom.CryptoComExchange.requires_isolated_margin and the
+    cdcx-isolated-margin skill). Omitting this on such an instrument gets
+    the order rejected with error 623 INSTRUMENT_MUST_USE_ISOLATED_MARGIN.
 
 Safety model (do not weaken any of this without the person explicitly
 asking):
@@ -78,21 +84,46 @@ def build_otoco_order_list(
     stop_price: float,
     take_profit_price: float,
     entry_type: str = "MARKET",
+    isolated_margin: bool = False,
+    isolation_id: Optional[str] = None,
 ) -> list[dict]:
+    """
+    `isolated_margin`: pass True for instruments that reject cross-margin
+    orders outright (Crypto.com's stock/RWA perpetuals -- see
+    cryptocom.CryptoComExchange.requires_isolated_margin). Attaches
+    `exec_inst: ["ISOLATED_MARGIN"]` to every leg; per the cdcx-isolated-
+    margin skill, create-otoco's legs share the same order-request shape
+    as `cdcx trade order`; and a mismatch here is caught by the mandatory
+    --dry-run before anything is sent, not by this function.
+
+    `isolation_id`: pass the existing position's isolation_id (from `cdcx
+    account positions`) when topping up or trimming an already-open
+    isolated position on this instrument -- omitting it on a second order
+    to the same isolated instrument is rejected with error 617
+    DUPLICATED_INSTRUMENT_ORDER_FOR_ISOLATED_MARGIN. Ignored if
+    `isolated_margin` is False.
+    """
     entry_side = "BUY" if direction == "long" else "SELL"
     exit_side = "SELL" if direction == "long" else "BUY"
     qty_str = str(quantity)
 
+    def _leg(order: dict) -> dict:
+        if isolated_margin:
+            order["exec_inst"] = ["ISOLATED_MARGIN"]
+            if isolation_id:
+                order["isolation_id"] = isolation_id
+        return order
+
     return [
-        {"instrument_name": instrument_name, "side": entry_side, "type": entry_type, "quantity": qty_str},
-        {
+        _leg({"instrument_name": instrument_name, "side": entry_side, "type": entry_type, "quantity": qty_str}),
+        _leg({
             "instrument_name": instrument_name, "side": exit_side, "type": "STOP_LOSS",
             "trigger_price": str(stop_price), "quantity": qty_str,
-        },
-        {
+        }),
+        _leg({
             "instrument_name": instrument_name, "side": exit_side, "type": "TAKE_PROFIT",
             "trigger_price": str(take_profit_price), "quantity": qty_str,
-        },
+        }),
     ]
 
 
