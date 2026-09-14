@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cdcx": {
+      "command": "cdcx",
+      "args": ["mcp"],
+      "env": {
+        "CRYPTOCOM_API_KEY": "${CRYPTOCOM_API_KEY}",
+        "CRYPTOCOM_API_SECRET": "${CRYPTOCOM_API_SECRET}"
+      }
+    }
+  }
+}

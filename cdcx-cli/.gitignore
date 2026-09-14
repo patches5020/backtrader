@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+cdcx_trades.json
+trading/
+backups/
