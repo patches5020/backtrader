@@ -253,7 +253,9 @@ def build_parser() -> argparse.ArgumentParser:
              "1D (major volume structure) / 4H (primary setup) / 1H (entry "
              "confirmation) LONG/SHORT trigger evaluation is appended at the end -- "
              "fetching whichever of those four roles wasn't already covered by "
-             "--timeframe/--timeframes.",
+             "--timeframe/--timeframes. Also prints the narrative MARKET STRUCTURE "
+             "block (see --structure-report) for every requested timeframe, not "
+             "just the four structural roles.",
     )
     parser.add_argument(
         "--structure-report", action="store_true", dest="structure_report",
@@ -261,9 +263,10 @@ def build_parser() -> argparse.ArgumentParser:
              "PRICE vs POC/VAH/VAL with where price sits relative to the value area, "
              "a plain-language regime read, the most recent unfilled FVG, swing "
              "structure, and Break of Structure) right after each timeframe's own "
-             "report. A different, simpler single-timeframe read than --structure's "
-             "1W/1D/4H/1H trigger system -- the two are independent and can be "
-             "combined. Same report cdcx-equity uses.",
+             "report, on its own, without also pulling in --structure's 1W/1D/4H/1H "
+             "trigger system. --structure already includes this block automatically "
+             "-- only pass this separately if you want the narrative block WITHOUT "
+             "the trigger system. Same report cdcx-equity uses.",
     )
     parser.add_argument(
         "--predictions", metavar="KIND", nargs="?", const="__all__", default=None,
@@ -1260,7 +1263,7 @@ def main(argv: list[str] | None = None) -> int:
                 # in a separate section for the whole structure system.
                 if args.structure:
                     _print_merged_structure_block(args.symbol, tf, args.limit, structure_cache)
-                if args.structure_report:
+                if args.structure or args.structure_report:
                     _print_structure_report(args.symbol, tf, args.limit, structure_cache)
                 print()
 
@@ -1300,7 +1303,7 @@ def main(argv: list[str] | None = None) -> int:
     structure_cache = {}
     if args.structure:
         _print_merged_structure_block(args.symbol, timeframe, args.limit, structure_cache)
-    if args.structure_report:
+    if args.structure or args.structure_report:
         _print_structure_report(args.symbol, timeframe, args.limit, structure_cache)
 
     result = 0
