@@ -24,7 +24,10 @@ from cdcx import cli, engine as engine_module
 
 
 def _fake_signal(total_score=80, signal="BUY"):
-    return SimpleNamespace(total_score=total_score, signal=signal)
+    return SimpleNamespace(
+        total_score=total_score, signal=signal, labels={"atr_expansion": "Flat"},
+        regime=SimpleNamespace(regime="trending"),
+    )
 
 
 def _fake_ohlcv_data(tf):

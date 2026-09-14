@@ -447,18 +447,42 @@ def _run_single(
         return None
 
 
+_SUMMARY_BUY_SIGNALS = {"STRONG BUY", "BUY"}
+_SUMMARY_SELL_SIGNALS = {"STRONG SELL", "SELL"}
+
+
+def _market_bias(signal) -> str:
+    """Derived from the same `signal.signal` column shown next to it (not
+    the separate unclamped direction_score) so a row never shows a Signal
+    and a Market that visibly contradict each other. Same convention as
+    cli_equity.py's own _market_bias -- kept in sync deliberately."""
+    if signal.signal in _SUMMARY_BUY_SIGNALS:
+        return "bullish"
+    if signal.signal in _SUMMARY_SELL_SIGNALS:
+        return "bearish"
+    return "neutral"
+
+
 def _print_summary_table(symbol: str, results: dict[str, object]) -> None:
-    bar = "=" * 49
+    bar = "=" * 85
     print(bar)
-    print(f"MULTI-TIMEFRAME SUMMARY -- {symbol}".center(49))
+    print(f"MULTI-TIMEFRAME SUMMARY -- {symbol}".center(85))
     print(bar)
-    print(f"{'Timeframe':<12}{'Score':<10}{'Signal':<15}")
-    print("-" * 49)
+    print(f"{'Timeframe':<12}{'Score':<8}{'Signal':<14}{'Market':<10}{'ATR':<12}{'Range':<7}")
+    print("-" * 85)
     for tf, signal in results.items():
         if signal is None:
-            print(f"{tf:<12}{'--':<10}{'ERROR':<15}")
+            print(f"{tf:<12}{'--':<8}{'ERROR':<14}{'--':<10}{'--':<12}{'--':<7}")
         else:
-            print(f"{tf:<12}{signal.total_score:<10}{signal.signal:<15}")
+            is_range = "yes" if signal.regime.regime == "ranging" else "no"
+            # Reuses the same "Atr Expansion" label already shown in this
+            # timeframe's own indicator breakdown above -- one source of
+            # truth, can't drift out of sync with that row.
+            atr_state = signal.labels.get("atr_expansion", "n/a").lower()
+            print(
+                f"{tf:<12}{signal.total_score:<8}{signal.signal:<14}"
+                f"{_market_bias(signal):<10}{atr_state:<12}{is_range:<7}"
+            )
     print(bar)
 
 
