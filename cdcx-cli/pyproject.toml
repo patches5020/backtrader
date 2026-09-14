@@ -15,9 +15,14 @@ dependencies = [
 # Cerebro engine instead of the standalone paper backtester in
 # `cdcx.backtest`. Install this repo's `backtrader` package to use them.
 backtrader = ["backtrader"]
+# `cdcx-equity --source robinhood` / `cdcx.exchange.robinhood_equity`.
+robinhood = ["robinhood-mcp", "robin_stocks"]
+# `cdcx-equity --source webull` / `cdcx.exchange.webull_equity`.
+webull = ["webull-openapi-python-sdk"]
 
 [project.scripts]
 cdcx-ai = "cdcx.cli:main"
+cdcx-equity = "cdcx.cli_equity:main"
 
 [build-system]
 requires = ["setuptools>=68.0"]
