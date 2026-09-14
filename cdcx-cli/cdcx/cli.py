@@ -256,6 +256,16 @@ def build_parser() -> argparse.ArgumentParser:
              "--timeframe/--timeframes.",
     )
     parser.add_argument(
+        "--structure-report", action="store_true", dest="structure_report",
+        help="Print the narrative MARKET STRUCTURE picture (REGIME/Trend/Range, "
+             "PRICE vs POC/VAH/VAL with where price sits relative to the value area, "
+             "a plain-language regime read, the most recent unfilled FVG, swing "
+             "structure, and Break of Structure) right after each timeframe's own "
+             "report. A different, simpler single-timeframe read than --structure's "
+             "1W/1D/4H/1H trigger system -- the two are independent and can be "
+             "combined. Same report cdcx-equity uses.",
+    )
+    parser.add_argument(
         "--predictions", metavar="KIND", nargs="?", const="__all__", default=None,
         help="Query the public Crypto.com Predictions Market Data API "
              "(data-api.crypto.com) for prediction-market events -- sports, crypto "
@@ -347,6 +357,37 @@ def _print_merged_structure_block(symbol: str, timeframe: str, limit: int, cache
     cache[timeframe] = (smap, data)
     print()
     print(structure_levels.format_structure_map(f"{timeframe.upper()} ({role})", smap))
+
+
+def _print_structure_report(symbol: str, timeframe: str, limit: int, cache: dict) -> None:
+    """--structure-report: the narrative MARKET STRUCTURE block (same report
+    cdcx-equity uses -- see structure_report.py), for THIS timeframe
+    specifically, printed for every requested timeframe (not gated to the
+    four structural roles the way --structure's own block is). Reuses the
+    OHLCV `_print_merged_structure_block` already fetched for this
+    timeframe when available, rather than hitting the exchange twice."""
+    from .structure_report import build_structure_report, format_structure_report
+
+    cached = cache.get(timeframe)
+    if cached is not None:
+        data = cached[1]
+    else:
+        from .exchange.cryptocom import CryptoComExchange
+
+        exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
+        try:
+            data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        except Exception as exc:
+            print(f"Error fetching candles for structure report of {symbol} @ {timeframe}: {exc}", file=sys.stderr)
+            return
+
+    try:
+        report = build_structure_report(symbol, timeframe, data.highs, data.lows, data.closes, data.volumes)
+    except Exception as exc:
+        print(f"Error building structure report for {symbol} @ {timeframe}: {exc}", file=sys.stderr)
+        return
+    print()
+    print(format_structure_report(report))
 
 
 def _print_structure_setup_section(symbol: str, limit: int, cache: dict) -> bool:
@@ -1219,6 +1260,8 @@ def main(argv: list[str] | None = None) -> int:
                 # in a separate section for the whole structure system.
                 if args.structure:
                     _print_merged_structure_block(args.symbol, tf, args.limit, structure_cache)
+                if args.structure_report:
+                    _print_structure_report(args.symbol, tf, args.limit, structure_cache)
                 print()
 
         _print_summary_table(args.symbol, results)
@@ -1257,6 +1300,8 @@ def main(argv: list[str] | None = None) -> int:
     structure_cache = {}
     if args.structure:
         _print_merged_structure_block(args.symbol, timeframe, args.limit, structure_cache)
+    if args.structure_report:
+        _print_structure_report(args.symbol, timeframe, args.limit, structure_cache)
 
     result = 0
     if args.execute:
