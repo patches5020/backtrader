@@ -125,7 +125,20 @@ def build_parser() -> argparse.ArgumentParser:
              "1D (major volume structure) / 4H (primary setup) / 1H (entry "
              "confirmation) LONG/SHORT trigger evaluation is appended at the end -- "
              "fetching whichever of those four roles wasn't already covered by "
-             "--timeframe/--timeframes.",
+             "--timeframe/--timeframes. Also prints the narrative MARKET STRUCTURE "
+             "block (see --structure-report) for every requested timeframe, not "
+             "just the four structural roles.",
+    )
+    parser.add_argument(
+        "--structure-report", action="store_true", dest="structure_report",
+        help="Print the narrative MARKET STRUCTURE picture (REGIME/Trend/Range, "
+             "PRICE vs POC/VAH/VAL with where price sits relative to the value area, "
+             "a plain-language regime read, the most recent unfilled FVG, swing "
+             "structure, and Break of Structure) right after each timeframe's own "
+             "report, on its own, without also pulling in --structure's 1W/1D/4H/1H "
+             "trigger system. --structure already includes this block automatically "
+             "-- only pass this separately if you want the narrative block WITHOUT "
+             "the trigger system.",
     )
     parser.add_argument(
         "--predictions", metavar="KIND", nargs="?", const="__all__", default=None,
@@ -208,6 +221,37 @@ def _print_merged_structure_block(symbol: str, timeframe: str, limit: int, cache
     print(structure_levels.format_structure_map(f"{timeframe.upper()} ({role})", smap))
 
 
+def _print_structure_report(symbol: str, timeframe: str, limit: int, cache: dict) -> None:
+    """--structure-report: the narrative MARKET STRUCTURE block, for THIS
+    timeframe specifically, printed for every requested timeframe (not
+    gated to the four structural roles the way --structure's own block
+    is). Reuses the OHLCV _print_merged_structure_block already fetched
+    for this timeframe when available, rather than hitting the exchange
+    twice."""
+    from .structure_report import build_structure_report, format_structure_report
+
+    cached = cache.get(timeframe)
+    if cached is not None:
+        data = cached[1]
+    else:
+        from .exchange.cryptocom import CryptoComExchange
+
+        exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
+        try:
+            data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        except Exception as exc:
+            print(f"Error fetching candles for structure report of {symbol} @ {timeframe}: {exc}", file=sys.stderr)
+            return
+
+    try:
+        report = build_structure_report(symbol, timeframe, data.highs, data.lows, data.closes, data.volumes)
+    except Exception as exc:
+        print(f"Error building structure report for {symbol} @ {timeframe}: {exc}", file=sys.stderr)
+        return
+    print()
+    print(format_structure_report(report))
+
+
 def _print_structure_setup_section(symbol: str, limit: int, cache: dict) -> bool:
     """Print the combined 1W/1D/4H/1H LONG/SHORT trigger evaluation, reusing
     whatever per-timeframe structure data the report loop already fetched
@@ -250,18 +294,38 @@ def _run_single(symbol: str, timeframe: str, limit: int):
         return None
 
 
+_SUMMARY_BUY_SIGNALS = {"STRONG BUY", "BUY"}
+_SUMMARY_SELL_SIGNALS = {"STRONG SELL", "SELL"}
+
+
+def _market_bias(signal) -> str:
+    """Derived from the same `signal.signal` column shown next to it (not
+    the separate unclamped direction_score) so a row never shows a Signal
+    and a Market that visibly contradict each other."""
+    if signal.signal in _SUMMARY_BUY_SIGNALS:
+        return "bullish"
+    if signal.signal in _SUMMARY_SELL_SIGNALS:
+        return "bearish"
+    return "neutral"
+
+
 def _print_summary_table(symbol: str, results: dict[str, object]) -> None:
-    bar = "=" * 49
+    bar = "=" * 85
     print(bar)
-    print(f"MULTI-TIMEFRAME SUMMARY -- {symbol}".center(49))
+    print(f"MULTI-TIMEFRAME SUMMARY -- {symbol}".center(85))
     print(bar)
-    print(f"{'Timeframe':<12}{'Score':<10}{'Signal':<15}")
-    print("-" * 49)
+    print(f"{'Timeframe':<12}{'Score':<8}{'Signal':<14}{'Market':<10}{'ATR':<12}{'Range':<7}")
+    print("-" * 85)
     for tf, signal in results.items():
         if signal is None:
-            print(f"{tf:<12}{'--':<10}{'ERROR':<15}")
+            print(f"{tf:<12}{'--':<8}{'ERROR':<14}{'--':<10}{'--':<12}{'--':<7}")
         else:
-            print(f"{tf:<12}{signal.total_score:<10}{signal.signal:<15}")
+            is_range = "yes" if signal.regime.regime == "ranging" else "no"
+            atr_state = signal.labels.get("atr_expansion", "n/a").lower()
+            print(
+                f"{tf:<12}{signal.total_score:<8}{signal.signal:<14}"
+                f"{_market_bias(signal):<10}{atr_state:<12}{is_range:<7}"
+            )
     print(bar)
 
 
@@ -728,6 +792,8 @@ def main(argv: list[str] | None = None) -> int:
                 # in a separate section for the whole structure system.
                 if args.structure:
                     _print_merged_structure_block(args.symbol, tf, args.limit, structure_cache)
+                if args.structure or args.structure_report:
+                    _print_structure_report(args.symbol, tf, args.limit, structure_cache)
                 print()
 
         _print_summary_table(args.symbol, results)
@@ -759,6 +825,8 @@ def main(argv: list[str] | None = None) -> int:
     structure_cache = {}
     if args.structure:
         _print_merged_structure_block(args.symbol, timeframe, args.limit, structure_cache)
+    if args.structure or args.structure_report:
+        _print_structure_report(args.symbol, timeframe, args.limit, structure_cache)
 
     result = 0
     if args.execute:
