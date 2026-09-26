@@ -18,6 +18,20 @@ This is NOT calendar-aligned (a trading day is ~6.5 regular hours, so the
 grouping drifts across day boundaries) -- good enough for indicator
 scoring, not a precise 4h chart. Documented here rather than silently
 treated as exact.
+
+WARNING -- crypto-shorthand ticker collisions: this module only calls
+`get_stock_historicals()`, Robinhood's stocks/ETFs endpoint -- there is no
+crypto code path here at all. If you pass a crypto shorthand like "XRP",
+"BTC", or "ETH" as --symbol, Robinhood will NOT reject it: several spot
+crypto ETFs are listed under exactly those tickers (e.g. NYSE Arca "XRP"
+= Bitwise XRP ETF), so the fetch silently succeeds against the ETF's
+share price instead of the coin's spot price. An ETF's share price is
+NOT 1:1 with spot (it reflects the trust's per-share unit structure --
+confirmed a ~10x gap for XRP), so every downstream number (entry, ATR,
+stop, FVG, structure report) will be real but for the wrong instrument,
+with no error to flag it. For the actual cryptocurrency, use the crypto
+path (`cdcx-ai` / cli.py -> cryptocom.py), which expects pair-style
+symbols like "XRPUSD", not bare "XRP".
 """
 
 from __future__ import annotations

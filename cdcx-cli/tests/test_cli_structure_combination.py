@@ -26,7 +26,9 @@ from cdcx import cli, engine as engine_module
 def _fake_signal(total_score=80, signal="BUY"):
     return SimpleNamespace(
         total_score=total_score, signal=signal, labels={"atr_expansion": "Flat"},
+        scores={"fair_value_gap": 0.0},
         regime=SimpleNamespace(regime="trending"),
+        adx_value=0.0, rsi_value=0.0, volume_ratio=0.0,
     )
 
 

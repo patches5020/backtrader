@@ -25,6 +25,15 @@ several plausible key spellings and raises a clear, actionable error
 listing the *actual* keys seen if none match, rather than silently
 guessing wrong. If you hit that error, paste the raw bar dict it prints
 and the key-lookup table can be corrected in one place.
+
+WARNING -- crypto-shorthand ticker collisions: same caveat as
+robinhood_equity.py above. This module only fetches Webull-listed
+stocks/ETFs -- there is no crypto code path here. A crypto shorthand
+like "XRP", "BTC", or "ETH" passed as --symbol may silently resolve to a
+listed spot-crypto ETF instead of erroring, and that ETF's share price
+is NOT 1:1 with the coin's spot price. For the actual cryptocurrency,
+use the crypto path (`cdcx-ai` / cli.py -> cryptocom.py) with a
+pair-style symbol like "XRPUSD".
 """
 
 from __future__ import annotations

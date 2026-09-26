@@ -26,6 +26,19 @@ def isolated_trade_state(tmp_path):
     settings.trade_state_path = original
 
 
+def _fake_raw_data(n=30, base=65000.0):
+    """Minimal OHLCV stand-in for _handle_trending_path's new raw_data param
+    -- just needs enough bars for market_structure.analyze() /
+    bos_state.classify_bos_state() to run without crashing; the ENTRY
+    LOCATION ASSESSMENT block these tests exercise doesn't assert on the
+    exact BOS reading, just that the function completes."""
+    closes = [base + i * 10 for i in range(n)]
+    highs = [c + 50 for c in closes]
+    lows = [c - 50 for c in closes]
+    volumes = [1000.0] * n
+    return SimpleNamespace(highs=highs, lows=lows, closes=closes, volumes=volumes)
+
+
 def test_trending_path_opens_trade_when_everything_confirms():
     entry_signal = SimpleNamespace(
         entry=65000.0, atr=850.0,
@@ -45,6 +58,7 @@ def test_trending_path_opens_trade_when_everything_confirms():
         "BTC/USDT", "long", entry_signal, 10000.0, 2.0,
         signals_by_tf, confluence, atr_series, adx_value=30.0, news_imminent=False,
         live=False, instrument_name_override=None,
+        raw_data=_fake_raw_data(), results={tf: entry_signal for tf in signals_by_tf},
     )
     assert code == 0
     trades = trade_manager.load_trades()
@@ -70,6 +84,7 @@ def test_trending_path_blocked_by_failing_checklist():
         "BTC/USDT", "long", entry_signal, 10000.0, 2.0,
         signals_by_tf, confluence, [800] * 20, adx_value=30.0, news_imminent=False,
         live=False, instrument_name_override=None,
+        raw_data=_fake_raw_data(), results={tf: entry_signal for tf in signals_by_tf},
     )
     assert code == 0
     assert trade_manager.load_trades() == []
@@ -92,6 +107,7 @@ def test_trending_path_blocked_by_overextension_guard():
         "BTC/USDT", "long", entry_signal, 10000.0, 2.0,
         signals_by_tf, confluence, [800] * 20, adx_value=30.0, news_imminent=False,
         live=False, instrument_name_override=None,
+        raw_data=_fake_raw_data(), results={tf: entry_signal for tf in signals_by_tf},
     )
     assert code == 0
     assert trade_manager.load_trades() == []
@@ -114,6 +130,7 @@ def test_trending_path_blocked_by_no_trade_filter_low_rr():
         "BTC/USDT", "long", entry_signal, 10000.0, 2.0,
         signals_by_tf, confluence, [800] * 20, adx_value=30.0, news_imminent=False,
         live=False, instrument_name_override=None,
+        raw_data=_fake_raw_data(), results={tf: entry_signal for tf in signals_by_tf},
     )
     assert code == 0
     assert trade_manager.load_trades() == []
@@ -168,6 +185,7 @@ def test_news_imminent_flag_blocks_an_otherwise_valid_trending_trade():
         "BTC/USDT", "long", entry_signal, 10000.0, 2.0,
         signals_by_tf, confluence, [800] * 20, adx_value=30.0, news_imminent=True,
         live=False, instrument_name_override=None,
+        raw_data=_fake_raw_data(), results={tf: entry_signal for tf in signals_by_tf},
     )
     assert code == 0
     assert trade_manager.load_trades() == []

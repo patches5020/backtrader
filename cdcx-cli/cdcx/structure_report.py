@@ -21,13 +21,25 @@ reinventing it here.
 
 Deliberately reuses regime.py / volume_profile_fixed.py / market_structure.py
 / fair_value_gap.py as-is; computes nothing new.
+
+Also reports bos_state.py's classification of the swing-based BOS (see that
+module's docstring for why the raw BOS flag alone can read "None" right
+after a genuine break) -- informational only, same as everything else in
+this report: it doesn't feed structure_strategy.py's LONG/SHORT triggers
+or the confluence/execution gate.
+
+Also reports vp_setup.py's classification of the current situation relative
+to VAH/VAL/POC as POC Bounce / Value Area Reversal / Value Area Breakout /
+None -- same informational-only status as the BOS state line above.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import bos_state as bos_state_module
 from . import regime as regime_module
+from . import vp_setup as vp_setup_module
 from .indicators import volume_profile_fixed, market_structure, fair_value_gap
 from .engine import _round_price  # same significant-figure price rounding engine.py itself uses
 
@@ -41,6 +53,8 @@ class StructureReport:
     vp: "volume_profile_fixed.VolumeProfileResult"
     structure: "market_structure.MarketStructureResult"
     fvgs: list  # fair_value_gap.FVG, all detected (filled and unfilled) -- see _format_fvg_line
+    bos_state: "bos_state_module.BosState"
+    vp_setup: "vp_setup_module.VpSetup"
 
 
 def build_structure_report(
@@ -51,9 +65,14 @@ def build_structure_report(
     vp_result = volume_profile_fixed.analyze(highs, lows, volumes, price=price)
     structure_result = market_structure.analyze(highs, lows, price=price)
     fvgs = fair_value_gap.detect_fvgs(highs, lows, closes)
+    bos_state_result = bos_state_module.classify_bos_state(structure_result, highs, lows, closes, volumes)
+    vp_setup_result = vp_setup_module.classify_vp_setup(
+        price, vp_result.poc, vp_result.vah, vp_result.val, highs, lows, closes, volumes,
+    )
     return StructureReport(
         symbol=symbol, timeframe=timeframe, price=price,
         regime=regime_result, vp=vp_result, structure=structure_result, fvgs=fvgs,
+        bos_state=bos_state_result, vp_setup=vp_setup_result,
     )
 
 
@@ -98,6 +117,7 @@ def format_structure_report(report: StructureReport) -> str:
     lines.append(f"VAH:    {vah}   (value area high)")
     lines.append(f"VAL:    {val}   (value area low)")
     lines.append(f"  -> price is {_price_location(report.price, vp.poc, vp.vah, vp.val)}")
+    lines.append(vp_setup_module.format_vp_setup(report.vp_setup))
     lines.append("")
 
     if report.regime.regime == "ranging":
@@ -118,5 +138,6 @@ def format_structure_report(report: StructureReport) -> str:
     st = report.structure
     lines.append(f"SWING STRUCTURE: {st.structure}")
     lines.append(f"BREAK OF STRUCTURE: {st.bos}")
+    lines.append(bos_state_module.format_bos_state(report.bos_state))
     lines.append(bar)
     return "\n".join(lines)

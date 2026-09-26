@@ -1,7 +1,7 @@
 import pytest
 
 from cdcx.config import settings
-from cdcx import cli_equity, engine
+from cdcx import cli_equity, engine, mtf_context
 
 
 @pytest.fixture(autouse=True)
@@ -74,3 +74,30 @@ def test_build_parser_defaults():
 def test_build_parser_accepts_structure_report_flag():
     args = cli_equity.build_parser().parse_args(["--source", "robinhood", "--symbol", "SPCX", "--structure-report"])
     assert args.structure_report is True
+
+
+def test_cli_equity_wires_mtf_context_against_real_trade_signals():
+    """cli_equity.py's --timeframes path prints mtf_context.py's ATR
+    alignment + VP hierarchy the same way cli.py does (see cli_equity.py's
+    module docstring) -- confirms that wiring against real TradeSignal
+    instances (not the SimpleNamespace stand-ins mtf_context's own test
+    suite uses), since engine.TradeSignal is what cli_equity.py's
+    --timeframes loop actually populates `results` with."""
+    results = {}
+    for tf in ("1w", "1d", "4h", "1h"):
+        signal = _signal("STRONG BUY")
+        signal.timeframe = tf
+        signal.labels = {"atr_expansion": "Expansion"}
+        signal.vp_setup_type = "value_area_breakout"
+        signal.vp_setup_direction = "up"
+        results[tf] = signal
+
+    alignment = mtf_context.build_atr_alignment(results)
+    assert alignment.expansion_count == 4
+    hierarchy = mtf_context.build_vp_hierarchy(results)
+    assert len(hierarchy.entries) == 4
+    assert hierarchy.macro_conflict is None
+
+    formatted = mtf_context.format_atr_alignment(alignment) + mtf_context.format_vp_hierarchy(hierarchy)
+    assert "4/4" in formatted
+    assert "macro location" in formatted
