@@ -35,6 +35,8 @@ from . import paper_approval
 from . import circuit_breaker
 from .confluence import evaluate_confluence
 from .entry_checklist import evaluate_entry_checklist, format_checklist
+from . import entry_location
+from . import mtf_context
 from . import regime as regime_module
 from . import ranging_strategy
 from . import no_trade_filter
@@ -507,25 +509,66 @@ def _market_bias(signal) -> str:
     return "neutral"
 
 
+def _fvg_bias(signal) -> str:
+    """bullish/bearish/neutral from the same fair_value_gap score already
+    computed for this timeframe's own indicator breakdown (signed by the
+    engine's trend classification, matching the FVG line shown there) --
+    not a second, independently-derived FVG read. Same convention as
+    cli_equity.py's own _fvg_bias -- kept in sync deliberately."""
+    score = signal.scores.get("fair_value_gap", 0.0)
+    if score > 0:
+        return "bullish"
+    if score < 0:
+        return "bearish"
+    return "neutral"
+
+
+def _ema_bias(signal) -> str:
+    """bullish/bearish/neutral from the same ema_trend score already shown in
+    this timeframe's own indicator breakdown ("Ema Trend") -- not a second,
+    independently-derived EMA read. Same convention as cli_equity.py's own
+    _ema_bias -- kept in sync deliberately."""
+    score = signal.scores.get("ema_trend", 0.0)
+    if score > 0:
+        return "bullish"
+    if score < 0:
+        return "bearish"
+    return "neutral"
+
+
 def _print_summary_table(symbol: str, results: dict[str, object]) -> None:
-    bar = "=" * 85
+    bar = "=" * 113
     print(bar)
-    print(f"MULTI-TIMEFRAME SUMMARY -- {symbol}".center(85))
+    print(f"MULTI-TIMEFRAME SUMMARY -- {symbol}".center(113))
     print(bar)
-    print(f"{'Timeframe':<12}{'Score':<8}{'Signal':<14}{'Market':<10}{'ATR':<12}{'Range':<7}")
-    print("-" * 85)
+    print(
+        f"{'Timeframe':<12}{'Score':<8}{'Signal':<14}{'Market':<10}"
+        f"{'ADX(17)':<10}{'RSI(17)':<10}{'VOL(17)':<10}{'ATR':<12}{'Range':<7}{'FVG':<10}{'EMA':<10}"
+    )
+    print("-" * 113)
     for tf, signal in results.items():
         if signal is None:
-            print(f"{tf:<12}{'--':<8}{'ERROR':<14}{'--':<10}{'--':<12}{'--':<7}")
+            print(
+                f"{tf:<12}{'--':<8}{'ERROR':<14}{'--':<10}"
+                f"{'--':<10}{'--':<10}{'--':<10}{'--':<12}{'--':<7}{'--':<10}{'--':<10}"
+            )
         else:
             is_range = "yes" if signal.regime.regime == "ranging" else "no"
             # Reuses the same "Atr Expansion" label already shown in this
             # timeframe's own indicator breakdown above -- one source of
             # truth, can't drift out of sync with that row.
             atr_state = signal.labels.get("atr_expansion", "n/a").lower()
+            # ADX(17)/RSI(17)/VOL(17): raw readings already computed in
+            # engine.analyze() at the same period-17 lookback every other
+            # smoothed indicator here uses -- not a second, inconsistent
+            # setting. VOL is current-bar volume / trailing 17-bar average.
+            adx_str = f"{signal.adx_value:.1f}"
+            rsi_str = f"{signal.rsi_value:.1f}"
+            vol_str = f"{signal.volume_ratio:.1f}x"
             print(
                 f"{tf:<12}{signal.total_score:<8}{signal.signal:<14}"
-                f"{_market_bias(signal):<10}{atr_state:<12}{is_range:<7}"
+                f"{_market_bias(signal):<10}{adx_str:<10}{rsi_str:<10}{vol_str:<10}"
+                f"{atr_state:<12}{is_range:<7}{_fvg_bias(signal):<10}{_ema_bias(signal):<10}"
             )
     print(bar)
 
@@ -572,6 +615,21 @@ def _handle_execute(
             pattern_matches = candlestick_patterns.detect_patterns(raw_data.highs, raw_data.lows, raw_data.opens, raw_data.closes)
             print()
             print("RANGE MODE: multi-timeframe trend confluence is not required.")
+
+            # --- FVP shadow analysis (Phase 1, research only) -------------
+            # Same scope statement as the confluence-path hook below:
+            # INFORMATION ONLY, never consulted by the ranging setup logic.
+            try:
+                from .volume_profile.fvp_analysis import build_fvp_shadow_report, format_fvp_shadow
+                fvp_report = build_fvp_shadow_report(
+                    raw_data.highs, raw_data.lows, raw_data.closes, raw_data.volumes,
+                    price=raw_data.closes[-1], timeframe=range_tf,
+                )
+                print()
+                print(format_fvp_shadow(fvp_report))
+            except Exception as exc:
+                print(f"\n[FVP shadow analysis skipped: {exc}]", file=sys.stderr)
+
             return _handle_ranging_path(
                 symbol, range_signal, account_balance, effective_risk_pct,
                 rsi_series, vp_result, pattern_matches, atr_series, adx_series[-1], news_imminent,
@@ -601,6 +659,8 @@ def _handle_execute(
 
     if not confluence.should_execute:
         print("No trade planned.")
+        entry_location_state = entry_location.classify_entry_location(confluence, regime=None)
+        print(entry_location.format_entry_location(entry_location_state))
         journal.write_rejected(symbol, "confluence", confluence.label, confluence)
         return 0
 
@@ -626,8 +686,25 @@ def _handle_execute(
     print()
     print(regime_module.format_regime(regime_result))
 
+    # --- FVP shadow analysis (Phase 1, research only) ---------------------
+    # INFORMATION ONLY: never consulted by the checklist/confluence/regime
+    # gate above or the entry/SL/TP/risk logic below. Wrapped so a bug here
+    # can never interrupt the real decision flow it's printed alongside.
+    try:
+        from .volume_profile.fvp_analysis import build_fvp_shadow_report, format_fvp_shadow
+        fvp_report = build_fvp_shadow_report(
+            raw_data.highs, raw_data.lows, raw_data.closes, raw_data.volumes,
+            price=raw_data.closes[-1], timeframe=confluence.entry_timeframe,
+        )
+        print()
+        print(format_fvp_shadow(fvp_report))
+    except Exception as exc:
+        print(f"\n[FVP shadow analysis skipped: {exc}]", file=sys.stderr)
+
     if regime_result.regime == "transitional":
         print("\nMarket Regime is TRANSITIONAL -- No Trade, regardless of confluence/checklist.")
+        entry_location_state = entry_location.classify_entry_location(confluence, regime=regime_result.regime)
+        print(entry_location.format_entry_location(entry_location_state))
         journal.write_rejected(symbol, "regime", "transitional", regime_result)
         return 0
 
@@ -642,7 +719,7 @@ def _handle_execute(
         return _handle_trending_path(
             symbol, direction, entry_signal, account_balance, effective_risk_pct,
             signals_by_tf, confluence, atr_series, adx_value, news_imminent,
-            live, instrument_name_override,
+            live, instrument_name_override, raw_data, results,
             max_consecutive_losses=max_consecutive_losses, max_drawdown_pct=max_drawdown_pct,
             atr_multiplier_override=atr_multiplier_override, tp_close_pcts_override=tp_close_pcts_override,
             confirmed_no_withdraw_permission=confirmed_no_withdraw_permission,
@@ -666,7 +743,7 @@ def _handle_execute(
 def _handle_trending_path(
     symbol, direction, entry_signal, account_balance, effective_risk_pct,
     signals_by_tf, confluence, atr_series, adx_value, news_imminent,
-    live, instrument_name_override,
+    live, instrument_name_override, raw_data, results,
     max_consecutive_losses=None, max_drawdown_pct=None, atr_multiplier_override=None,
     tp_close_pcts_override=None, confirmed_no_withdraw_permission=False,
 ) -> int:
@@ -675,6 +752,25 @@ def _handle_trending_path(
     )
     print()
     print(format_checklist(checklist))
+
+    entry_location_state = entry_location.classify_entry_location(confluence, regime="trending", checklist_result=checklist)
+    print()
+    print(entry_location.format_entry_location(entry_location_state))
+
+    from . import bos_state as bos_state_module
+    from .indicators import market_structure
+
+    atr_alignment = mtf_context.build_atr_alignment(results)
+    vp_hierarchy = mtf_context.build_vp_hierarchy(results)
+    structure_result = market_structure.analyze(raw_data.highs, raw_data.lows, price=raw_data.closes[-1])
+    bos_state_result = bos_state_module.classify_bos_state(
+        structure_result, raw_data.highs, raw_data.lows, raw_data.closes, raw_data.volumes,
+    )
+    print()
+    print(entry_location.format_entry_assessment(
+        direction, confluence, "trending", atr_alignment, vp_hierarchy,
+        checklist, entry_signal, bos_state_result, entry_location_state,
+    ))
 
     if not checklist.all_passed:
         print("\nEntry checklist not fully satisfied -- no trade planned.")
@@ -1268,6 +1364,9 @@ def main(argv: list[str] | None = None) -> int:
                 print()
 
         _print_summary_table(args.symbol, results)
+        print()
+        print(mtf_context.format_atr_alignment(mtf_context.build_atr_alignment(results)))
+        print(mtf_context.format_vp_hierarchy(mtf_context.build_vp_hierarchy(results)))
 
         if args.execute:
             result = _handle_execute(
