@@ -32,6 +32,8 @@ from . import risk
 from . import trade_manager
 from .confluence import evaluate_confluence
 from .entry_checklist import evaluate_entry_checklist, format_checklist
+from . import entry_location
+from . import mtf_context
 from . import regime as regime_module
 from . import ranging_strategy
 from . import no_trade_filter
@@ -310,21 +312,31 @@ def _market_bias(signal) -> str:
 
 
 def _print_summary_table(symbol: str, results: dict[str, object]) -> None:
-    bar = "=" * 85
+    bar = "=" * 103
     print(bar)
-    print(f"MULTI-TIMEFRAME SUMMARY -- {symbol}".center(85))
+    print(f"MULTI-TIMEFRAME SUMMARY -- {symbol}".center(103))
     print(bar)
-    print(f"{'Timeframe':<12}{'Score':<8}{'Signal':<14}{'Market':<10}{'ATR':<12}{'Range':<7}")
-    print("-" * 85)
+    print(
+        f"{'Timeframe':<12}{'Score':<8}{'Signal':<14}{'Market':<10}"
+        f"{'ADX(17)':<10}{'RSI(17)':<10}{'VOL(17)':<10}{'ATR':<12}{'Range':<7}"
+    )
+    print("-" * 103)
     for tf, signal in results.items():
         if signal is None:
-            print(f"{tf:<12}{'--':<8}{'ERROR':<14}{'--':<10}{'--':<12}{'--':<7}")
+            print(
+                f"{tf:<12}{'--':<8}{'ERROR':<14}{'--':<10}"
+                f"{'--':<10}{'--':<10}{'--':<10}{'--':<12}{'--':<7}"
+            )
         else:
             is_range = "yes" if signal.regime.regime == "ranging" else "no"
             atr_state = signal.labels.get("atr_expansion", "n/a").lower()
+            adx_str = f"{signal.adx_value:.1f}"
+            rsi_str = f"{signal.rsi_value:.1f}"
+            vol_str = f"{signal.volume_ratio:.1f}x"
             print(
                 f"{tf:<12}{signal.total_score:<8}{signal.signal:<14}"
-                f"{_market_bias(signal):<10}{atr_state:<12}{is_range:<7}"
+                f"{_market_bias(signal):<10}{adx_str:<10}{rsi_str:<10}{vol_str:<10}"
+                f"{atr_state:<12}{is_range:<7}"
             )
     print(bar)
 
@@ -392,6 +404,8 @@ def _handle_execute(
 
     if not confluence.should_execute:
         print("No trade planned.")
+        entry_location_state = entry_location.classify_entry_location(confluence, regime=None)
+        print(entry_location.format_entry_location(entry_location_state))
         return 0
 
     entry_signal = results[confluence.entry_timeframe]
@@ -417,6 +431,8 @@ def _handle_execute(
 
     if regime_result.regime == "transitional":
         print("\nMarket Regime is TRANSITIONAL -- No Trade, regardless of confluence/checklist.")
+        entry_location_state = entry_location.classify_entry_location(confluence, regime=regime_result.regime)
+        print(entry_location.format_entry_location(entry_location_state))
         return 0
 
     # Shared raw data needed by the no-trade filter and (for ranging) the
@@ -430,7 +446,7 @@ def _handle_execute(
         return _handle_trending_path(
             symbol, direction, entry_signal, account_balance, effective_risk_pct,
             signals_by_tf, confluence, atr_series, adx_value, news_imminent,
-            live, instrument_name_override,
+            live, instrument_name_override, raw_data, results,
         )
 
     # regime_result.regime == "ranging"
@@ -448,13 +464,32 @@ def _handle_execute(
 def _handle_trending_path(
     symbol, direction, entry_signal, account_balance, effective_risk_pct,
     signals_by_tf, confluence, atr_series, adx_value, news_imminent,
-    live, instrument_name_override,
+    live, instrument_name_override, raw_data, results,
 ) -> int:
     checklist = evaluate_entry_checklist(
         entry_signal, direction, risk_pct=effective_risk_pct, symbol=symbol, atr_series=atr_series,
     )
     print()
     print(format_checklist(checklist))
+
+    entry_location_state = entry_location.classify_entry_location(confluence, regime="trending", checklist_result=checklist)
+    print()
+    print(entry_location.format_entry_location(entry_location_state))
+
+    from . import bos_state as bos_state_module
+    from .indicators import market_structure
+
+    atr_alignment = mtf_context.build_atr_alignment(results)
+    vp_hierarchy = mtf_context.build_vp_hierarchy(results)
+    structure_result = market_structure.analyze(raw_data.highs, raw_data.lows, price=raw_data.closes[-1])
+    bos_state_result = bos_state_module.classify_bos_state(
+        structure_result, raw_data.highs, raw_data.lows, raw_data.closes, raw_data.volumes,
+    )
+    print()
+    print(entry_location.format_entry_assessment(
+        direction, confluence, "trending", atr_alignment, vp_hierarchy,
+        checklist, entry_signal, bos_state_result, entry_location_state,
+    ))
 
     if not checklist.all_passed:
         print("\nEntry checklist not fully satisfied -- no trade planned.")
@@ -797,6 +832,9 @@ def main(argv: list[str] | None = None) -> int:
                 print()
 
         _print_summary_table(args.symbol, results)
+        print()
+        print(mtf_context.format_atr_alignment(mtf_context.build_atr_alignment(results)))
+        print(mtf_context.format_vp_hierarchy(mtf_context.build_vp_hierarchy(results)))
 
         if args.execute:
             result = _handle_execute(

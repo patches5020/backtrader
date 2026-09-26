@@ -29,6 +29,7 @@ from .indicators import volume_profile_anchor
 from .indicators import market_structure
 from .indicators import candlestick_patterns
 from . import regime as regime_module
+from . import vp_setup
 from .utils.color import REGIME_TAGS, colorize_regime
 
 # Indicator weights as specified. Note: these already summed to 120 (not
@@ -82,6 +83,23 @@ class TradeSignal:
     decision: str = ""             # alias of execution_signal -- shown paired with `confidence`, reframed as
     # "Decision Confidence" in the report so a NO TRADE decision reads as "confident this ISN'T a trade,"
     # not "confident the trade will win" -- same underlying number, honest relabeling of what it measures.
+
+    # Raw indicator readings for the MTF summary table (ADX/RSI/VOL columns)
+    # -- same period (17, atr_ema_variant1.EMA_LENGTH) every other smoothed
+    # indicator in the engine already runs on. adx_value/rsi_value come
+    # straight from the adx_result/rsi_result already computed above;
+    # volume_ratio is current bar volume / the trailing ATR_LENGTH-bar
+    # average.
+    adx_value: float = 0.0
+    rsi_value: float = 0.0
+    volume_ratio: float = 0.0
+
+    # Volume Profile setup classification (vp_setup.py) -- Mode A: context
+    # only, same non-scoring status as the raw structural levels above.
+    # Carried on TradeSignal purely so it lands in journal.py's write_signal()
+    # records for later review/backtesting.
+    vp_setup_type: str = "none"             # "poc_bounce" | "value_area_reversal" | "value_area_breakout" | "none"
+    vp_setup_direction: Optional[str] = None  # "up" | "down"
 
 
 def classify_signal(total_score: float) -> tuple[str, str]:
@@ -154,6 +172,34 @@ def analyze_ohlcv(
     rsi_series = rsi_module.calculate_rsi(data.closes)
     rsi_result = rsi_module.score_rsi(rsi_series[-1], trend=trend)
 
+    # --- Volume ratio (last CLOSED bar vs its own trailing ATR_LENGTH-bar
+    # average) -- the exchange's most recent candle is frequently still
+    # forming (its volume-so-far, not its final volume) -- confirmed live:
+    # right after a new candle opens this read near 0x while TradingView's
+    # last CLOSED candle for the same timeframe showed real above-average
+    # volume for that same window. Unlike RSI/EMA/ADX (proper running
+    # indicators, correctly live-updating every tick), a ratio's numerator
+    # being a partial bar silently understates it, so this always resolves
+    # to the last bar known to be closed.
+    _vol_ref_idx = len(data.volumes) - 1
+    _tf_unit_seconds = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
+    _tf = (timeframe or "").strip().lower()
+    _tf_seconds = None
+    if _tf and _tf[-1] in _tf_unit_seconds:
+        try:
+            _tf_seconds = float(_tf[:-1]) * _tf_unit_seconds[_tf[-1]]
+        except ValueError:
+            _tf_seconds = None
+    if (
+        _tf_seconds and data.timestamps and len(data.timestamps) > 1
+        and (data.timestamps[-1] / 1000 + _tf_seconds) > time.time()
+    ):
+        _vol_ref_idx -= 1  # last candle is still forming -- use the prior, closed one
+    _vol_window_start = max(0, _vol_ref_idx - atr_ema_variant1.ATR_LENGTH + 1)
+    _vol_window = data.volumes[_vol_window_start:_vol_ref_idx + 1]
+    _avg_volume = sum(_vol_window) / len(_vol_window) if _vol_window else 0.0
+    volume_ratio = (data.volumes[_vol_ref_idx] / _avg_volume) if _avg_volume else 0.0
+
     # --- Fibonacci retracement + extension --------------------------------
     swing_high = max(data.highs[-lookback:])
     swing_low = min(data.lows[-lookback:])
@@ -170,6 +216,10 @@ def analyze_ohlcv(
     fixed_vp_result = volume_profile_fixed.analyze(data.highs, data.lows, data.volumes, price=price)
     anchored_vp_result = volume_profile_anchor.analyze(
         data.highs, data.lows, data.closes, data.volumes, price=price, anchor_lookback=lookback
+    )
+    vp_setup_result = vp_setup.classify_vp_setup(
+        price, fixed_vp_result.poc, fixed_vp_result.vah, fixed_vp_result.val,
+        data.highs, data.lows, data.closes, data.volumes,
     )
 
     # --- Market structure ------------------------------------------------
@@ -358,6 +408,11 @@ def analyze_ohlcv(
         atr_length=atr_ema_variant1.ATR_LENGTH,
         setup_score=setup_score,
         decision=execution_signal,
+        adx_value=round(adx_result.adx, 2),
+        rsi_value=round(rsi_result.value, 2),
+        volume_ratio=round(volume_ratio, 2),
+        vp_setup_type=vp_setup_result.setup_type,
+        vp_setup_direction=vp_setup_result.direction,
     )
 
 
