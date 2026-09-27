@@ -72,13 +72,7 @@ class VpBos:
 
 
 def _drop_forming_bar(timestamps, highs, lows, closes, volumes, timeframe, now):
-    tf_seconds = no_trade_gate.timeframe_to_seconds(timeframe)
-    if not timestamps or len(timestamps) < 2 or not tf_seconds:
-        return highs, lows, closes, volumes
-    # Crypto.com (ccxt) timestamps are milliseconds; robinhood_equity's are
-    # seconds. Anything past ~1e11 can only be milliseconds.
-    last_open = timestamps[-1] / 1000 if timestamps[-1] > 1e11 else timestamps[-1]
-    if last_open + tf_seconds > now:
+    if no_trade_gate.last_bar_is_forming(timestamps, timeframe, now):
         return highs[:-1], lows[:-1], closes[:-1], volumes[:-1]
     return highs, lows, closes, volumes
 

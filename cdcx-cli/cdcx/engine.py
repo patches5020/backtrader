@@ -238,12 +238,11 @@ def analyze_ohlcv(
     # correctly live-updating every tick), a ratio's numerator being a
     # partial bar silently understates it, so this always resolves to the
     # last bar known to be closed.
+    # Timestamps are ms from Crypto.com but seconds from the equity sources
+    # -- last_bar_is_forming handles both (a bare `/ 1000` made every
+    # equity bar look like it was still forming).
     _vol_ref_idx = len(data.volumes) - 1
-    _tf_seconds = no_trade_gate.timeframe_to_seconds(timeframe)
-    if (
-        _tf_seconds and data.timestamps and len(data.timestamps) > 1
-        and (data.timestamps[-1] / 1000 + _tf_seconds) > time.time()
-    ):
+    if no_trade_gate.last_bar_is_forming(data.timestamps, timeframe, time.time()):
         _vol_ref_idx -= 1  # last candle is still forming -- use the prior, closed one
     _vol_window_start = max(0, _vol_ref_idx - atr_ema_variant1.ATR_LENGTH + 1)
     _vol_window = data.volumes[_vol_window_start:_vol_ref_idx + 1]

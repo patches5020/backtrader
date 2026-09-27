@@ -60,6 +60,23 @@ def timeframe_to_seconds(timeframe: str) -> Optional[float]:
     return count * _TIMEFRAME_UNIT_SECONDS[timeframe[-1]]
 
 
+def timestamp_to_seconds(ts: float) -> float:
+    """Unix seconds from either unit the data sources use: Crypto.com
+    (ccxt) returns milliseconds, robinhood_equity / webull_equity return
+    seconds. Anything past 1e11 can only be milliseconds (1e11 s is the
+    year 5138; 1e11 ms is 1973)."""
+    return ts / 1000 if ts > 1e11 else ts
+
+
+def last_bar_is_forming(timestamps: Sequence[float], timeframe: str, now: float) -> bool:
+    """True if the last bar (timestamps are bar OPEN times) hasn't closed
+    yet at `now`. False when the timeframe or timestamps can't tell us."""
+    tf_seconds = timeframe_to_seconds(timeframe)
+    if not tf_seconds or not timestamps or len(timestamps) < 2:
+        return False
+    return timestamp_to_seconds(timestamps[-1]) + tf_seconds > now
+
+
 @dataclass
 class NoTradeGateResult:
     passed: bool
