@@ -1,0 +1,21 @@
+{
+  "_about": "PROTECTED parameters. Each value is checked against the LIVE cdcx code by .ai/validate_handoff.py -- if the code and this file disagree, validation FAILS. Changing any of these requires explicit approval from the user, never just a handoff task.",
+  "_code_root": "cdcx-cli/cdcx",
+  "parameters": {
+    "atr_stop_multiplier":        {"value": 1.5,                      "source": "config.settings.atr_stop_multiplier",     "meaning": "Stop loss = entry -/+ 1.5 x ATR"},
+    "atr_multiplier_overrides":   {"value": "BTC:1.5,XRP:1.5",        "source": "config.settings.atr_multiplier_overrides", "meaning": "Per-symbol stop multiplier (kept at 1.5 by user choice)"},
+    "tp_ratios":                  {"value": "2.2,2.6,3.2,4.5",        "source": "config.settings.tp_ratios",               "meaning": "TP1-TP4 as R-multiples of the stop distance"},
+    "tp_close_pcts":              {"value": "25,25,25,25",            "source": "config.settings.tp_close_pcts",           "meaning": "% of original size closed at each TP"},
+    "tp_mode":                    {"value": "atr",                    "source": "config.settings.tp_mode",                 "meaning": "Take profits from ATR R-multiples (not structural)"},
+    "risk_pct_per_trade":         {"value": 2.0,                      "source": "config.settings.risk_pct_per_trade",      "meaning": "Account % risked per trade"},
+    "max_risk_pct_gate":          {"value": 2.0,                      "source": "no_trade_gate.DEFAULT_MAX_RISK_PCT",      "meaning": "Final gate refuses any trade risking more"},
+    "min_risk_reward":            {"value": 2.0,                      "source": "no_trade_filter.MIN_RISK_REWARD",         "meaning": "Trades below 1:2 R:R are blocked"},
+    "min_confluence_count":       {"value": 2,                        "source": "confluence.MIN_CONFLUENCE_COUNT",         "meaning": "At least 2 of 1H/4H/1D/1W must agree (transitional TFs excluded)"},
+    "confluence_timeframes":      {"value": ["1h", "4h", "1d", "1w"], "source": "confluence.ALLOWED_TIMEFRAMES",           "meaning": "The only timeframes that count toward confluence"},
+    "trading_mode":               {"value": "PAPER",                  "source": "config.settings.trading_mode",            "meaning": "Real orders need TRADING_MODE=LIVE AND --live AND human YES"},
+    "max_data_staleness_bars":    {"value": 3.0,                      "source": "config.settings.max_data_staleness_bars", "meaning": "Newest candle must be within 3 bars of now"},
+    "circuit_max_consecutive_losses": {"value": 3,                    "source": "circuit_breaker.DEFAULT_MAX_CONSECUTIVE_LOSSES", "meaning": "Trading halts after 3 losses in a row"},
+    "circuit_max_drawdown_pct":   {"value": 10.0,                     "source": "circuit_breaker.DEFAULT_MAX_DRAWDOWN_PCT", "meaning": "Trading halts at 10% drawdown"},
+    "breakout_atr_multiple":      {"value": 0.25,                     "source": "structure_levels.BREAKOUT_ATR_MULTIPLE",  "meaning": "A legitimate break must close past the level by 0.25 x ATR"}
+  }
+}

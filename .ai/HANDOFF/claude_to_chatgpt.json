@@ -1,0 +1,14 @@
+{
+  "_about": "Claude Code writes this after working a handoff task. The user gives it (or packet_for_chatgpt.md) to ChatGPT for review.",
+  "task_id": "",
+  "completed": "",
+  "status": "empty",
+  "summary": "",
+  "files_changed": [],
+  "commits": [],
+  "tests": {"passed": 0, "failed": 0, "new": []},
+  "protected_parameters_changed": false,
+  "baseline_verdict_changed": false,
+  "evidence": [],
+  "open_questions": []
+}

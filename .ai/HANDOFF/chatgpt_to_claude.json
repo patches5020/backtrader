@@ -1,0 +1,13 @@
+{
+  "_about": "ChatGPT fills this in (or the user pastes ChatGPT's version here). Claude Code acts on it only when the user asks it to process the handoff.",
+  "task_id": "",
+  "created": "",
+  "status": "empty",
+  "title": "",
+  "request": "",
+  "context": "",
+  "acceptance_criteria": [],
+  "touches_protected_parameters": false,
+  "protected_change_justification": "",
+  "notes_for_claude": ""
+}
