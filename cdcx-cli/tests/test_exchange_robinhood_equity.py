@@ -118,3 +118,15 @@ def test_fetch_ohlcv_1w_is_built_from_daily_bars():
     assert calls == [("day", "5year")]
     assert data.timestamps == [_monday_utc("2026-09-21")]
     assert data.volumes == [40.0]
+
+
+def test_fetch_ohlcv_tags_bars_as_us_equity():
+    class FakeRh:
+        def get_stock_historicals(self, symbol, interval, span, bounds):
+            return [_row("2026-09-21T00:00:00Z", "98", "100", "97", "99", "20"),
+                    _row("2026-09-22T00:00:00Z", "99", "101", "96", "100", "20")]
+
+    exchange = object.__new__(robinhood_equity.RobinhoodEquityExchange)
+    exchange._rh = FakeRh()
+    assert exchange.fetch_ohlcv("SPY", timeframe="1w").market == "us_equity"
+    assert exchange.fetch_ohlcv("SPY", timeframe="1d").market == "us_equity"

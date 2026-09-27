@@ -71,8 +71,8 @@ class VpBos:
     reasons: list[str] = field(default_factory=list)
 
 
-def _drop_forming_bar(timestamps, highs, lows, closes, volumes, timeframe, now):
-    if no_trade_gate.last_bar_is_forming(timestamps, timeframe, now):
+def _drop_forming_bar(timestamps, highs, lows, closes, volumes, timeframe, now, market):
+    if no_trade_gate.last_bar_is_forming(timestamps, timeframe, now, market=market):
         return highs[:-1], lows[:-1], closes[:-1], volumes[:-1]
     return highs, lows, closes, volumes
 
@@ -130,10 +130,11 @@ def _first_break_index(highs, lows, closes, swings, direction: str, level: float
 def classify_vp_bos(
     timestamps: Sequence[int], highs: Sequence[float], lows: Sequence[float],
     closes: Sequence[float], volumes: Sequence[float], timeframe: str, now: Optional[float] = None,
+    market: str = no_trade_gate.MARKET_24X7,
 ) -> VpBos:
     now = time.time() if now is None else now
     highs, lows, closes, volumes = _drop_forming_bar(
-        list(timestamps), list(highs), list(lows), list(closes), list(volumes), timeframe, now,
+        list(timestamps), list(highs), list(lows), list(closes), list(volumes), timeframe, now, market,
     )
 
     ms = market_structure.analyze(highs, lows, price=closes[-1])
@@ -240,7 +241,10 @@ def build_vp_bos_by_tf(data_by_tf: dict, now: Optional[float] = None) -> dict[st
         if data is None:
             continue
         try:
-            out[tf] = classify_vp_bos(data.timestamps, data.highs, data.lows, data.closes, data.volumes, tf, now=now)
+            out[tf] = classify_vp_bos(
+                data.timestamps, data.highs, data.lows, data.closes, data.volumes, tf, now=now,
+                market=getattr(data, "market", no_trade_gate.MARKET_24X7),
+            )
         except Exception:
             out[tf] = None
     return out

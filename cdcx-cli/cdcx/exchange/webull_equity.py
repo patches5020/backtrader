@@ -136,6 +136,7 @@ class WebullEquityExchange:
         data = _parse_history_bar_response(rows)
         if timeframe == "1w":
             data = _restamp_weekly_to_monday(data)
+        data.market = "us_equity"  # weekly bars close Friday 16:00 ET -- see no_trade_gate.bar_close_time
         return data
 
     def fetch_ticker_price(self, symbol: str) -> float:

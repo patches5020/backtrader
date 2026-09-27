@@ -187,3 +187,8 @@ def test_daily_webull_bars_keep_their_own_stamp():
     ]
     data = _fake_webull_exchange(rows, []).fetch_ohlcv("SPY", timeframe="1d")
     assert data.timestamps == [_utc_midnight(2026, 9, 24) + 4 * 3600, _utc_midnight(2026, 9, 25) + 4 * 3600]
+
+
+def test_webull_bars_are_tagged_us_equity():
+    data = _fake_webull_exchange(_WEBULL_SPY_WEEKS, []).fetch_ohlcv("SPY", timeframe="1w")
+    assert data.market == "us_equity"

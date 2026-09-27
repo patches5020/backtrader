@@ -107,7 +107,9 @@ class RobinhoodEquityExchange:
         elif timeframe == "1w":
             data = _aggregate_weekly(data)
 
-        return _tail(data, limit)
+        data = _tail(data, limit)
+        data.market = "us_equity"  # weekly bars close Friday 16:00 ET -- see no_trade_gate.bar_close_time
+        return data
 
     def fetch_ticker_price(self, symbol: str) -> float:
         price = self._rh.get_latest_price(symbol, includeExtendedHours=False)

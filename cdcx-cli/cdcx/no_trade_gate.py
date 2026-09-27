@@ -68,13 +68,44 @@ def timestamp_to_seconds(ts: float) -> float:
     return ts / 1000 if ts > 1e11 else ts
 
 
-def last_bar_is_forming(timestamps: Sequence[float], timeframe: str, now: float) -> bool:
+MARKET_24X7 = "24x7"
+MARKET_US_EQUITY = "us_equity"
+_US_EQUITY_CLOSE_HOUR_ET = 16
+
+
+def bar_close_time(open_ts: float, timeframe: str, market: str = MARKET_24X7) -> Optional[float]:
+    """Unix seconds when a bar that opened at `open_ts` closes.
+
+    24x7 (crypto): open + the timeframe's length.
+    us_equity weekly: Friday 16:00 America/New_York of that week (DST-
+    correct), not the following Monday -- the equity sources stamp weeks
+    at Monday 00:00 UTC, so open + 7 days kept a finished week "forming"
+    all weekend. Other equity timeframes keep open + length."""
+    tf_seconds = timeframe_to_seconds(timeframe)
+    if not tf_seconds:
+        return None
+    open_s = timestamp_to_seconds(open_ts)
+    if market == MARKET_US_EQUITY and timeframe.strip().lower() == "1w":
+        from datetime import datetime, timedelta, timezone
+        from zoneinfo import ZoneInfo
+
+        day = datetime.fromtimestamp(open_s, tz=timezone.utc).date()
+        friday = day + timedelta(days=4 - day.weekday())
+        close = datetime(friday.year, friday.month, friday.day, _US_EQUITY_CLOSE_HOUR_ET,
+                         tzinfo=ZoneInfo("America/New_York"))
+        return close.timestamp()
+    return open_s + tf_seconds
+
+
+def last_bar_is_forming(
+    timestamps: Sequence[float], timeframe: str, now: float, market: str = MARKET_24X7,
+) -> bool:
     """True if the last bar (timestamps are bar OPEN times) hasn't closed
     yet at `now`. False when the timeframe or timestamps can't tell us."""
-    tf_seconds = timeframe_to_seconds(timeframe)
-    if not tf_seconds or not timestamps or len(timestamps) < 2:
+    if not timestamps or len(timestamps) < 2:
         return False
-    return timestamp_to_seconds(timestamps[-1]) + tf_seconds > now
+    close = bar_close_time(timestamps[-1], timeframe, market)
+    return close is not None and close > now
 
 
 @dataclass

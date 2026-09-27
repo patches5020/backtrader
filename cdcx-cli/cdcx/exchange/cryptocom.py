@@ -20,6 +20,10 @@ class OHLCV:
     lows: list[float]
     closes: list[float]
     volumes: list[float]
+    # Trading-hours model, used only to decide when the last bar closes
+    # (no_trade_gate.bar_close_time): "24x7" for crypto; the equity
+    # sources set "us_equity" so a weekly bar closes at Friday's session end.
+    market: str = "24x7"
 
 
 @dataclass

@@ -63,3 +63,57 @@ def test_engine_volume_ratio_uses_closed_equity_bar(monkeypatch):
     monkeypatch.setattr(engine, "time", type("T", (), {"time": staticmethod(lambda: NOW)}))
     signal = engine.analyze_ohlcv("SPY", _equity_like_series(3000.0, 7200), timeframe="1h")
     assert signal.volume_ratio > 2.0
+
+
+# --- equity weekly bars close at Friday's session end -------------------------
+from datetime import datetime, timezone  # noqa: E402
+
+from cdcx.no_trade_gate import bar_close_time  # noqa: E402
+
+
+def _utc(y, m, d, h=0, mi=0):
+    return datetime(y, m, d, h, mi, tzinfo=timezone.utc).timestamp()
+
+
+MON_SEP_21 = _utc(2026, 9, 21)  # equity sources stamp weeks Monday 00:00 UTC
+PRIOR_WEEK = MON_SEP_21 - 7 * 86400
+
+
+def test_equity_week_closes_friday_4pm_new_york_daylight_time():
+    assert bar_close_time(MON_SEP_21, "1w", market="us_equity") == _utc(2026, 9, 25, 20)  # 16:00 EDT
+
+
+def test_equity_week_closes_friday_4pm_new_york_standard_time():
+    mon_dec_7 = _utc(2026, 12, 7)
+    assert bar_close_time(mon_dec_7, "1w", market="us_equity") == _utc(2026, 12, 11, 21)  # 16:00 EST
+
+
+def test_finished_equity_week_is_closed_on_the_weekend():
+    saturday = _utc(2026, 9, 26, 12)
+    assert last_bar_is_forming([PRIOR_WEEK, MON_SEP_21], "1w", saturday, market="us_equity") is False
+    # ...but still forming at 15:59 ET Friday.
+    assert last_bar_is_forming([PRIOR_WEEK, MON_SEP_21], "1w", _utc(2026, 9, 25, 19, 59), market="us_equity") is True
+
+
+def test_crypto_week_still_runs_the_full_seven_days():
+    saturday = _utc(2026, 9, 26, 12)
+    assert bar_close_time(MON_SEP_21, "1w") == MON_SEP_21 + 7 * 86400
+    assert last_bar_is_forming([PRIOR_WEEK, MON_SEP_21], "1w", saturday) is True
+
+
+def test_equity_non_weekly_timeframes_unchanged():
+    assert bar_close_time(MON_SEP_21, "1d", market="us_equity") == MON_SEP_21 + 86400
+    assert bar_close_time(MON_SEP_21, "1h", market="us_equity") == MON_SEP_21 + 3600
+
+
+def test_engine_uses_finished_equity_week_volume_on_the_weekend(monkeypatch):
+    saturday = _utc(2026, 9, 26, 12)
+    monkeypatch.setattr(engine, "time", type("T", (), {"time": staticmethod(lambda: saturday)}))
+    n = 80
+    closes = [100 + math.sin(i / 4) + i * 0.05 for i in range(n)]
+    data = OHLCV(
+        timestamps=[int(MON_SEP_21 - (n - 1 - i) * 7 * 86400) for i in range(n)],
+        opens=closes, highs=[c + 0.5 for c in closes], lows=[c - 0.5 for c in closes], closes=closes,
+        volumes=[1000.0] * (n - 1) + [3000.0], market="us_equity",
+    )
+    assert engine.analyze_ohlcv("SPY", data, timeframe="1w").volume_ratio > 2.0  # the finished week counts

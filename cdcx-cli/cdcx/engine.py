@@ -242,7 +242,7 @@ def analyze_ohlcv(
     # -- last_bar_is_forming handles both (a bare `/ 1000` made every
     # equity bar look like it was still forming).
     _vol_ref_idx = len(data.volumes) - 1
-    if no_trade_gate.last_bar_is_forming(data.timestamps, timeframe, time.time()):
+    if no_trade_gate.last_bar_is_forming(data.timestamps, timeframe, time.time(), market=getattr(data, "market", "24x7")):
         _vol_ref_idx -= 1  # last candle is still forming -- use the prior, closed one
     _vol_window_start = max(0, _vol_ref_idx - atr_ema_variant1.ATR_LENGTH + 1)
     _vol_window = data.volumes[_vol_window_start:_vol_ref_idx + 1]
