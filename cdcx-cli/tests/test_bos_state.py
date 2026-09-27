@@ -142,3 +142,21 @@ def test_no_labeled_swings_is_no_break():
     highs, lows, closes, volumes = _flat_then_breakout(n=30, break_at=15, level=100.0, post_break_step=1.0)
     result = classify_bos_state(empty_result, highs, lows, closes, volumes)
     assert result.state == "no_break"
+
+
+def test_close_beyond_the_level_before_the_swing_formed_is_not_a_break():
+    # Regression (XRP/USD 1H, 2026-09-27): "bullish break of 1.5298" cited
+    # a close from nine hours BEFORE the 1.5298 swing high existed. Here
+    # the decisive close is at bar 15 but the swing high is only labeled
+    # at bar 20 -- nothing after bar 20 closes above it.
+    highs, lows, closes, volumes = _flat_then_breakout(n=30, break_at=15, level=100.0, post_break_step=0.0)
+    for i in range(21, 30):
+        closes[i], highs[i], lows[i] = 99.5, 99.6, 99.4
+    result = classify_bos_state(_result_with_high(100.0, index=20), highs, lows, closes, volumes)
+    assert result.state == "no_break"
+
+
+def test_close_after_the_swing_formed_still_breaks_it():
+    highs, lows, closes, volumes = _flat_then_breakout(n=30, break_at=15, level=100.0, post_break_step=1.0)
+    result = classify_bos_state(_result_with_high(100.0, index=10), highs, lows, closes, volumes)
+    assert result.state == "continuation"

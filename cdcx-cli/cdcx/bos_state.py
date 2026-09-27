@@ -69,17 +69,24 @@ def classify_bos_state(
     last_high = _most_recent_labeled(structure_result.swings, "high")
     last_low = _most_recent_labeled(structure_result.swings, "low")
 
+    # min_index: only closes AFTER the swing formed can break it. Without
+    # this, a close from hours before the swing existed (inside the same
+    # 20-bar lookback) was reported as its "break" -- confirmed live,
+    # XRP/USD 1H 2026-09-27: "bullish break of 1.5298" cited a 12:00 close
+    # of 1.5363, nine hours before the 21:00 swing high at 1.5298 formed.
     up = None
     if last_high is not None:
         up = structure_levels.detect_breakout(
             highs, lows, closes, volumes,
             level_price=last_high.price, level_name="resistance", direction="up",
+            min_index=last_high.index + 1,
         )
     down = None
     if last_low is not None:
         down = structure_levels.detect_breakout(
             highs, lows, closes, volumes,
             level_price=last_low.price, level_name="support", direction="down",
+            min_index=last_low.index + 1,
         )
 
     if structure_result.bos == "Bullish BOS":

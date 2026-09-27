@@ -120,6 +120,7 @@ def detect_breakout(
     highs: Sequence[float], lows: Sequence[float], closes: Sequence[float], volumes: Sequence[float],
     level_price: float, level_name: LevelName, direction: Direction,
     lookback: int = BREAKOUT_LOOKBACK, atr_multiple: float = BREAKOUT_ATR_MULTIPLE,
+    min_index: int = 0,
 ) -> Optional[BreakoutEvent]:
     """
     Scans the most recent `lookback` closed bars for a decisive close beyond
@@ -134,6 +135,11 @@ def detect_breakout(
     lookback average -- a genuine breakout should trade more, not less,
     than the consolidation it's leaving, but this is informational only
     (not required for the event to be returned).
+
+    `min_index`: ignore bars before this index. For a level that only came
+    into existence at some bar (a swing high/low), pass that bar + 1 -- a
+    close beyond the price BEFORE the swing formed isn't a break of it.
+    Fixed levels (POC/VAH/VAL) leave it at 0.
     """
     n = len(closes)
     if n < 2:
@@ -144,7 +150,7 @@ def detect_breakout(
 
     avg_volume = sum(volumes[start:n]) / max(1, n - start)
 
-    for i in range(n - 1, start - 1, -1):
+    for i in range(n - 1, max(start, min_index) - 1, -1):
         atr = atr_series[i]
         threshold = atr_multiple * atr
         close = closes[i]

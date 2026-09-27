@@ -120,14 +120,17 @@ def test_cdcx_ai_execute_blocks_on_confluence_and_opens_nothing(capsys):
 
 
 def test_vp_bos_layer_matches_baseline():
-    # Advisory VP-BOS read of the same snapshot: the 1D and 4H bearish
-    # breaks were rejected (closed back through), 1W/1H had no closed break.
+    # Advisory VP-BOS read of the same snapshot: no timeframe has a real
+    # closed break. (Before the 2026-09-27 bos_state fix this read 1D/4H
+    # "BOS-FAILED" -- closes from BEFORE those swing lows formed were being
+    # counted as breaks of them: 1D cited Sep 19 for a Sep 23 swing, 4H
+    # cited 03:00 for a 23:00 swing.)
     by_tf = vp_bos.build_vp_bos_by_tf(
         {tf: OHLCV(**bars) for tf, bars in SNAPSHOT["timeframes"].items()}, now=SNAPSHOT["captured_at"],
     )
     assert {tf: (r.signal, r.vp) for tf, r in by_tf.items()} == {
         "1w": ("NONE", "--"),
-        "1d": ("BOS-FAILED", "REJECT"),
-        "4h": ("BOS-FAILED", "REJECT"),
+        "1d": ("NONE", "--"),
+        "4h": ("NONE", "--"),
         "1h": ("NONE", "--"),
     }
