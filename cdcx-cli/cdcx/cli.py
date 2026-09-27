@@ -437,6 +437,12 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict) -> bool
     except Exception as exc:
         print(f"(setup grade unavailable: {exc})", file=sys.stderr)
 
+    # Advisory-only VP-BOS (vp_bos.py) -- raw BOS + volume-profile
+    # acceptance, from the same four cached series. Never read by the gate.
+    from . import vp_bos
+    print()
+    print(vp_bos.format_vp_bos_section(symbol, vp_bos.build_vp_bos_by_tf({tf: cache[tf][1] for tf in vp_bos.TIMEFRAMES})))
+
     return True
 
 

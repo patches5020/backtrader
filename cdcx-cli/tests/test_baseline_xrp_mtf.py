@@ -25,7 +25,7 @@ import types
 
 import pytest
 
-from cdcx import cli, engine, journal, trade_manager
+from cdcx import cli, engine, journal, trade_manager, vp_bos
 from cdcx.config import settings
 from cdcx.exchange.cryptocom import CryptoComExchange, OHLCV
 
@@ -48,7 +48,9 @@ def replay_snapshot(monkeypatch, tmp_path):
 
     monkeypatch.setattr(CryptoComExchange, "__init__", lambda self, *a, **k: None)
     monkeypatch.setattr(CryptoComExchange, "fetch_ohlcv", fake_fetch)
-    monkeypatch.setattr(engine, "time", types.SimpleNamespace(time=lambda: SNAPSHOT["captured_at"]))
+    frozen_clock = types.SimpleNamespace(time=lambda: SNAPSHOT["captured_at"])
+    monkeypatch.setattr(engine, "time", frozen_clock)
+    monkeypatch.setattr(vp_bos, "time", frozen_clock)
     monkeypatch.setattr(settings, "trade_state_path", str(tmp_path / "trades.json"))
     monkeypatch.setattr(settings, "trading_journal_dir", str(tmp_path / "journal"))
 
@@ -111,6 +113,21 @@ def test_cdcx_ai_execute_blocks_on_confluence_and_opens_nothing(capsys):
     assert exit_code == 1
     assert "got 1, need at least 2" in captured.err
     assert "SETUP: NO TRADE" in captured.out
+    assert "VP-BOS CONFLUENCE: bull 0/4, bear 0/4" in captured.out
     assert trade_manager.load_trades() == []
     rejected = journal.load_stage("rejected")
     assert [r.get("rejected_at_stage") for r in rejected] == ["confluence"]
+
+
+def test_vp_bos_layer_matches_baseline():
+    # Advisory VP-BOS read of the same snapshot: the 1D and 4H bearish
+    # breaks were rejected (closed back through), 1W/1H had no closed break.
+    by_tf = vp_bos.build_vp_bos_by_tf(
+        {tf: OHLCV(**bars) for tf, bars in SNAPSHOT["timeframes"].items()}, now=SNAPSHOT["captured_at"],
+    )
+    assert {tf: (r.signal, r.vp) for tf, r in by_tf.items()} == {
+        "1w": ("NONE", "--"),
+        "1d": ("BOS-FAILED", "REJECT"),
+        "4h": ("BOS-FAILED", "REJECT"),
+        "1h": ("NONE", "--"),
+    }

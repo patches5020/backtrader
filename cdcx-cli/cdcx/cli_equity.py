@@ -446,6 +446,12 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(mtf_context.format_atr_alignment(mtf_context.build_atr_alignment(results)))
         print(mtf_context.format_vp_hierarchy(mtf_context.build_vp_hierarchy(results)))
+        if args.structure_report and raw_data_by_tf:
+            # Advisory-only VP-BOS (vp_bos.py) -- same section as cdcx-ai's
+            # --structure, from the series already fetched above.
+            from . import vp_bos
+            print()
+            print(vp_bos.format_vp_bos_section(args.symbol, vp_bos.build_vp_bos_by_tf(raw_data_by_tf)))
 
         if not any_success:
             return 1
