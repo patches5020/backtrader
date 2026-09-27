@@ -19,6 +19,14 @@ grouping drifts across day boundaries) -- good enough for indicator
 scoring, not a precise 4h chart. Documented here rather than silently
 treated as exact.
 
+"1w" is built from DAILY bars grouped by calendar week (Mon-Fri, stamped
+Monday 00:00 UTC), not Robinhood's native interval="week". The native
+weekly series lags: confirmed live 2026-09-26 (a Saturday) it still ended
+at the week of Sep 14 while the daily series already held all of Sep
+21-25. Checked against the native series over 60 completed weeks: the
+daily-built bars matched open/high/low/close/volume exactly, with the
+same Monday stamp.
+
 WARNING -- crypto-shorthand ticker collisions: this module only calls
 `get_stock_historicals()`, Robinhood's stocks/ETFs endpoint -- there is no
 crypto code path here at all. If you pass a crypto shorthand like "XRP",
@@ -48,7 +56,7 @@ _TIMEFRAME_MAP = {
     "1h": ("hour", "3month"),
     "4h": ("hour", "3month"),  # aggregated 4x below -- see module docstring
     "1d": ("day", "5year"),
-    "1w": ("week", "5year"),
+    "1w": ("day", "5year"),  # grouped into calendar weeks below -- see module docstring
 }
 
 
@@ -96,6 +104,8 @@ class RobinhoodEquityExchange:
 
         if timeframe == "4h":
             data = _aggregate(data, factor=4)
+        elif timeframe == "1w":
+            data = _aggregate_weekly(data)
 
         return _tail(data, limit)
 
@@ -141,6 +151,30 @@ def _aggregate(data: OHLCV, factor: int) -> OHLCV:
         lows.append(min(data.lows[i:i + factor]))
         closes.append(data.closes[i + factor - 1])
         volumes.append(sum(data.volumes[i:i + factor]))
+    return OHLCV(timestamps=timestamps, opens=opens, highs=highs, lows=lows, closes=closes, volumes=volumes)
+
+
+def _aggregate_weekly(data: OHLCV) -> OHLCV:
+    """Groups daily bars into calendar weeks (open of the week's first
+    session, close of its last, max high, min low, summed volume), each
+    stamped Monday 00:00 UTC -- the same stamp Robinhood's native weekly
+    bars use, even for a holiday-shortened week."""
+    timestamps, opens, highs, lows, closes, volumes = [], [], [], [], [], []
+    for i, ts in enumerate(data.timestamps):
+        day = datetime.fromtimestamp(ts, tz=timezone.utc)
+        monday = int(datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp()) - day.weekday() * 86400
+        if timestamps and timestamps[-1] == monday:
+            highs[-1] = max(highs[-1], data.highs[i])
+            lows[-1] = min(lows[-1], data.lows[i])
+            closes[-1] = data.closes[i]
+            volumes[-1] += data.volumes[i]
+        else:
+            timestamps.append(monday)
+            opens.append(data.opens[i])
+            highs.append(data.highs[i])
+            lows.append(data.lows[i])
+            closes.append(data.closes[i])
+            volumes.append(data.volumes[i])
     return OHLCV(timestamps=timestamps, opens=opens, highs=highs, lows=lows, closes=closes, volumes=volumes)
 
 

@@ -1,6 +1,9 @@
 import pytest
 
-from cdcx.exchange.robinhood_equity import _parse_historicals, _aggregate, _tail
+from datetime import datetime, timezone
+
+from cdcx.exchange import robinhood_equity
+from cdcx.exchange.robinhood_equity import _parse_historicals, _aggregate, _aggregate_weekly, _tail
 
 
 def _row(begins_at, o, h, l, c, v):
@@ -62,3 +65,56 @@ def test_tail_is_a_noop_when_limit_exceeds_available_bars():
     rows = [_row("2026-09-08T13:00:00Z", "1", "1", "1", "1", "1")]
     data = _tail(_parse_historicals(rows), limit=200)
     assert len(data.closes) == 1
+
+
+def _monday_utc(date_str):
+    return int(datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+
+
+def test_aggregate_weekly_groups_daily_bars_by_calendar_week():
+    rows = [
+        # week of Mon 2026-09-14 (full week)
+        _row("2026-09-14T00:00:00Z", "100", "103", "99", "102", "10"),
+        _row("2026-09-15T00:00:00Z", "102", "104", "101", "103", "10"),
+        _row("2026-09-16T00:00:00Z", "103", "110", "100", "108", "10"),
+        _row("2026-09-17T00:00:00Z", "108", "109", "95", "96", "10"),
+        _row("2026-09-18T00:00:00Z", "96", "99", "94", "98", "10"),
+        # week of Mon 2026-09-21 -- the week Robinhood's native weekly lagged on
+        _row("2026-09-21T00:00:00Z", "98", "100", "97", "99", "20"),
+        _row("2026-09-25T00:00:00Z", "99", "101", "90", "91", "30"),
+    ]
+    data = _aggregate_weekly(_parse_historicals(rows))
+    assert data.timestamps == [_monday_utc("2026-09-14"), _monday_utc("2026-09-21")]
+    assert (data.opens[0], data.highs[0], data.lows[0], data.closes[0], data.volumes[0]) == (100, 110, 94, 98, 50)
+    assert (data.opens[1], data.highs[1], data.lows[1], data.closes[1], data.volumes[1]) == (98, 101, 90, 91, 50)
+
+
+def test_aggregate_weekly_stamps_monday_for_a_holiday_shortened_week():
+    # Labor Day 2026-09-07: the week's first session is Tuesday, but the
+    # bar is still stamped Monday -- matching Robinhood's native weekly.
+    rows = [
+        _row("2026-09-08T00:00:00Z", "100", "101", "99", "100", "5"),
+        _row("2026-09-11T00:00:00Z", "100", "102", "98", "101", "5"),
+    ]
+    data = _aggregate_weekly(_parse_historicals(rows))
+    assert data.timestamps == [_monday_utc("2026-09-07")]
+    assert data.opens == [100.0] and data.closes == [101.0]
+
+
+def test_fetch_ohlcv_1w_is_built_from_daily_bars():
+    calls = []
+
+    class FakeRh:
+        def get_stock_historicals(self, symbol, interval, span, bounds):
+            calls.append((interval, span))
+            return [
+                _row("2026-09-21T00:00:00Z", "98", "100", "97", "99", "20"),
+                _row("2026-09-22T00:00:00Z", "99", "101", "96", "100", "20"),
+            ]
+
+    exchange = object.__new__(robinhood_equity.RobinhoodEquityExchange)
+    exchange._rh = FakeRh()
+    data = exchange.fetch_ohlcv("SPY", timeframe="1w", limit=200)
+    assert calls == [("day", "5year")]
+    assert data.timestamps == [_monday_utc("2026-09-21")]
+    assert data.volumes == [40.0]
