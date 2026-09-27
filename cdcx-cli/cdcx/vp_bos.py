@@ -3,14 +3,21 @@ vp_bos.py
 ---------
 VP-BOS -- Volume Profile Break of Structure.
 
-    Raw BOS  = structural event        (market_structure.py's flag)
-    VP-BOS   = structural event + volume-profile acceptance beyond the level
-    BOS-FAILED = structural event + rejection (closed back through the level)
+    SWING FORMS -> structure level exists
+      -> only LATER closed bars can break it (break_index > swing_index)
+      -> close beyond it by 0.25x ATR?        no  -> NONE
+      -> yes: volume acceptance beyond it?    yes -> VP-BOS
+                                              no  -> reclaimed? yes -> BOS-FAILED
+                                                                no  -> BOS-PENDING
 
-A Break of Structure becomes Volume-Profile-confirmed when price CLOSES
-beyond a validated swing level and then shows acceptance in the new price
-area. A break that quickly returns through the level is a failed BOS, not
-a VP-BOS. Volume is never required to detect the raw break itself.
+    NONE         no legitimate structural break (a raw flag from a close
+                 that clears the swing by less than 0.25x ATR is shown as
+                 a note, not a state)
+    BOS-PENDING  legitimate break, volume acceptance not confirmed yet
+    VP-BOS       legitimate break + volume acceptance
+    BOS-FAILED   legitimate break, then closed back through the level
+
+Volume is never required to detect the break itself.
 
 Reuses, unchanged:
   - market_structure.analyze          -> swings + raw BOS flag
@@ -59,16 +66,29 @@ TIMEFRAMES = ("1w", "1d", "4h", "1h")
 
 @dataclass
 class VpBos:
-    signal: str                   # VP-BOS-BULL/BEAR, BOS-RETEST, BOS-UNCONFIRMED,
-                                  # BOS-FAILED, BOS-BULL/BEAR (raw, no close), NONE
-    vp: str                       # ACCEPT | HOLD | PENDING | REJECT | --
+    signal: str                   # VP-BOS-BULL | VP-BOS-BEAR | BOS-PENDING | BOS-FAILED | NONE
+    acceptance: str               # CONFIRMED | NOT CONFIRMED | REJECTED | --
     status: str                   # BULLISH | BEARISH | TRANSITIONAL
     structure: str                # e.g. "LL/LH/HL/LH"
     poc_direction: str            # "up" | "down" | "flat"
-    direction: Optional[str] = None      # "up" | "down" for a confirmed break
+    direction: Optional[str] = None      # "up" | "down" for a legitimate break
     level_price: Optional[float] = None
+    swing_index: Optional[int] = None    # bar the broken swing formed on
+    break_index: Optional[int] = None    # FIRST closed bar beyond it; always > swing_index
+    raw_note: Optional[str] = None       # raw flag that didn't clear the 0.25x ATR margin
     evidence: dict = field(default_factory=dict)
     reasons: list[str] = field(default_factory=list)
+
+    @property
+    def result(self) -> str:
+        return {"VP-BOS-BULL": "VP-BOS", "VP-BOS-BEAR": "VP-BOS", "BOS-PENDING": "PENDING",
+                "BOS-FAILED": "FAILED"}.get(self.signal, "NONE")
+
+    @property
+    def bos_label(self) -> str:
+        if self.signal == "NONE":
+            return "NONE"
+        return f"{'BULL' if self.direction == 'up' else 'BEAR'} {self.result}"
 
 
 def _drop_forming_bar(timestamps, highs, lows, closes, volumes, timeframe, now, market):
@@ -144,27 +164,26 @@ def classify_vp_bos(
 
     if bos.state == "no_break":
         poc_dir = _poc_direction(highs, lows, volumes, len(highs) - NO_BREAK_MIGRATION_BARS, atr)
-        raw = {"Bullish BOS": "BOS-BULL", "Bearish BOS": "BOS-BEAR"}.get(ms.bos, "NONE")
-        reason = (
-            f"Raw {ms.bos} flag, but no closed bar beyond the swing level by 0.25x ATR yet."
-            if raw != "NONE" else "No confirmed swing break in the lookback window."
-        )
-        return VpBos(signal=raw, vp="--", status="TRANSITIONAL", structure=structure,
-                     poc_direction=poc_dir, reasons=[reason])
+        raw_note = _raw_flag_note(ms, closes[-1], atr)
+        return VpBos(signal="NONE", acceptance="--", status="TRANSITIONAL", structure=structure,
+                     poc_direction=poc_dir, raw_note=raw_note,
+                     reasons=[raw_note or "No legitimate swing break in the lookback window."])
 
     direction, level = bos.direction, bos.level_price
     side = "BULL" if direction == "up" else "BEAR"
     beyond = (lambda c: c > level) if direction == "up" else (lambda c: c < level)
 
     b = _first_break_index(highs, lows, closes, ms.swings, direction, level)
-    if b is None:  # bos_state fell back to the other side's window -- treat as unconfirmed
-        b = len(closes) - 1
+    if b is None:  # defensive: bos_state's break always has one (same margin, same window)
+        b = bos.break_index
+    common = dict(structure=structure, direction=direction, level_price=level,
+                  swing_index=bos.swing_index, break_index=b)
     poc_dir = _poc_direction(highs, lows, volumes, b, atr)
 
     if bos.state == "retest_failed":
-        return VpBos(signal="BOS-FAILED", vp="REJECT", status="TRANSITIONAL", structure=structure,
-                     poc_direction=poc_dir, direction=direction, level_price=level,
-                     reasons=[f"{side} break of {level:.6f} closed back through the level -- rejected."] + bos.reasons)
+        return VpBos(signal="BOS-FAILED", acceptance="REJECTED", status="TRANSITIONAL", poc_direction=poc_dir,
+                     reasons=[f"{side} break of {level:.6f} closed back through the level -- rejected."] + bos.reasons,
+                     **common)
 
     post_closes = closes[b:]
     post_n = len(post_closes)
@@ -186,39 +205,65 @@ def classify_vp_bos(
     ]
 
     if sustained and (new_hvn or poc_shift or retest_held):
-        return VpBos(signal=f"VP-BOS-{side}", vp="ACCEPT", status="BULLISH" if direction == "up" else "BEARISH",
-                     structure=structure, poc_direction=poc_dir, direction=direction, level_price=level,
-                     evidence=evidence, reasons=reasons)
-    if retest_held:
-        return VpBos(signal="BOS-RETEST", vp="HOLD", status="TRANSITIONAL", structure=structure,
-                     poc_direction=poc_dir, direction=direction, level_price=level, evidence=evidence, reasons=reasons)
-    return VpBos(signal="BOS-UNCONFIRMED", vp="PENDING", status="TRANSITIONAL", structure=structure,
-                 poc_direction=poc_dir, direction=direction, level_price=level, evidence=evidence, reasons=reasons)
+        return VpBos(signal=f"VP-BOS-{side}", acceptance="CONFIRMED",
+                     status="BULLISH" if direction == "up" else "BEARISH",
+                     poc_direction=poc_dir, evidence=evidence, reasons=reasons, **common)
+    # Not reclaimed, not accepted yet (a held retest alone isn't acceptance).
+    return VpBos(signal="BOS-PENDING", acceptance="NOT CONFIRMED", status="TRANSITIONAL",
+                 poc_direction=poc_dir, evidence=evidence, reasons=reasons, **common)
+
+
+def _raw_flag_note(ms, close: float, atr: float) -> Optional[str]:
+    """market_structure's raw flag fires on ANY close past the latest swing.
+    Below the 0.25x ATR margin that's not a legitimate break -- report it
+    as a note so it's visible without being counted as a BOS state."""
+    from . import structure_levels
+
+    kind = {"Bullish BOS": "high", "Bearish BOS": "low"}.get(ms.bos)
+    if kind is None:
+        return None
+    swings = [s for s in ms.swings if s.kind == kind and s.label]
+    if not swings:
+        return None
+    level = swings[-1].price
+    return (
+        f"raw {'bullish' if kind == 'high' else 'bearish'} flag: closed {abs(close - level):.4g} "
+        f"{'above' if kind == 'high' else 'below'} {level:.6g}, needs "
+        f"{structure_levels.BREAKOUT_ATR_MULTIPLE}x ATR ({structure_levels.BREAKOUT_ATR_MULTIPLE * atr:.4g})"
+    )
 
 
 _ARROWS = {"up": "↑", "down": "↓", "flat": "→"}
 
 
 def format_vp_bos_section(symbol: str, by_tf: dict[str, VpBos]) -> str:
-    bar = "-" * 81
+    """structure -> break -> acceptance, one column each, instead of one
+    overloaded BOS field."""
+    width = 81
+    bar = "-" * width
     lines = [
         bar,
-        f"VP-BOS -- VOLUME PROFILE BREAK OF STRUCTURE -- {symbol} (advisory)".center(81),
+        f"MULTI-TIMEFRAME STRUCTURE / VP SUMMARY -- {symbol} (advisory)".center(width),
         bar,
-        f"{'TF':<6}{'STRUCTURE':<16}{'VP-BOS':<18}{'LEVEL':<12}{'VP':<9}{'POC':<5}{'STATUS':<14}",
+        f"{'TF':<5}{'SWING':<15}{'BOS':<15}{'LEVEL':<10}{'VP ACCEPTANCE':<15}{'POC':<5}{'RESULT':<8}",
     ]
+    notes = []
     for tf, r in by_tf.items():
         if r is None:
-            lines.append(f"{tf:<6}{'--':<16}{'ERROR':<18}{'--':<12}{'--':<9}{'--':<5}{'--':<14}")
+            lines.append(f"{tf:<5}{'--':<15}{'ERROR':<15}{'--':<10}{'--':<15}{'--':<5}{'--':<8}")
             continue
         level = f"{r.level_price:.6g}" if r.level_price is not None else "--"
         lines.append(
-            f"{tf:<6}{r.structure:<16}{r.signal:<18}{level:<12}{r.vp:<9}"
-            f"{_ARROWS[r.poc_direction]:<5}{r.status:<14}"
+            f"{tf:<5}{r.structure:<15}{r.bos_label:<15}{level:<10}{r.acceptance:<15}"
+            f"{_ARROWS[r.poc_direction]:<5}{r.result:<8}"
         )
-    bull = sum(1 for r in by_tf.values() if r is not None and r.signal == "VP-BOS-BULL")
-    bear = sum(1 for r in by_tf.values() if r is not None and r.signal == "VP-BOS-BEAR")
+        if r.raw_note:
+            notes.append(f"  {tf.upper()}: {r.raw_note} -- not a BOS")
+
+    rows = [r for r in by_tf.values() if r is not None]
     n = len(by_tf)
+    bull = sum(1 for r in rows if r.signal == "VP-BOS-BULL")
+    bear = sum(1 for r in rows if r.signal == "VP-BOS-BEAR")
     if bull >= 2 and bull > bear:
         direction = "BULLISH"
     elif bear >= 2 and bear > bull:
@@ -226,7 +271,12 @@ def format_vp_bos_section(symbol: str, by_tf: dict[str, VpBos]) -> str:
     else:
         direction = "NONE (insufficient VP-BOS agreement)"
     lines.append(bar)
-    lines.append(f"VP-BOS CONFLUENCE: bull {bull}/{n}, bear {bear}/{n}  ->  DIRECTION: {direction}")
+    lines.append(f"VP-BOS CONFIRMED: {bull + bear}/{n}  (bull {bull}, bear {bear})  ->  DIRECTION: {direction}")
+    lines.append(f"BOS-PENDING:      {sum(1 for r in rows if r.signal == 'BOS-PENDING')}/{n}")
+    lines.append(f"BOS-FAILED:       {sum(1 for r in rows if r.signal == 'BOS-FAILED')}/{n}")
+    if notes:
+        lines.append("Raw flags below the 0.25x ATR break margin:")
+        lines.extend(notes)
     lines.append("Closed bars only. Informational -- not used by the confluence/execution gate.")
     lines.append(bar)
     return "\n".join(lines)

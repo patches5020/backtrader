@@ -113,7 +113,7 @@ def test_cdcx_ai_execute_blocks_on_confluence_and_opens_nothing(capsys):
     assert exit_code == 1
     assert "got 1, need at least 2" in captured.err
     assert "SETUP: NO TRADE" in captured.out
-    assert "VP-BOS CONFLUENCE: bull 0/4, bear 0/4" in captured.out
+    assert "VP-BOS CONFIRMED: 0/4" in captured.out
     assert trade_manager.load_trades() == []
     rejected = journal.load_stage("rejected")
     assert [r.get("rejected_at_stage") for r in rejected] == ["confluence"]
@@ -128,7 +128,7 @@ def test_vp_bos_layer_matches_baseline():
     by_tf = vp_bos.build_vp_bos_by_tf(
         {tf: OHLCV(**bars) for tf, bars in SNAPSHOT["timeframes"].items()}, now=SNAPSHOT["captured_at"],
     )
-    assert {tf: (r.signal, r.vp) for tf, r in by_tf.items()} == {
+    assert {tf: (r.signal, r.acceptance) for tf, r in by_tf.items()} == {
         "1w": ("NONE", "--"),
         "1d": ("NONE", "--"),
         "4h": ("NONE", "--"),

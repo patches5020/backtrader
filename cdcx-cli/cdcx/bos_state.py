@@ -48,6 +48,10 @@ class BosState:
     direction: Optional[str] = None       # "up" | "down", None for no_break
     level_price: Optional[float] = None   # the specific swing high/low that broke
     reasons: list[str] = field(default_factory=list)
+    # Temporal causality: a bar can only break a swing that already exists,
+    # so whenever both are set, break_index > swing_index.
+    swing_index: Optional[int] = None
+    break_index: Optional[int] = None
 
 
 def _most_recent_labeled(swings, kind: str):
@@ -117,7 +121,11 @@ def classify_bos_state(
     ]
     reasons.extend(retest.reasons)
 
-    return BosState(state=state, direction=breakout.direction, level_price=breakout.level_price, reasons=reasons)
+    swing = last_high if breakout.direction == "up" else last_low
+    return BosState(
+        state=state, direction=breakout.direction, level_price=breakout.level_price, reasons=reasons,
+        swing_index=swing.index, break_index=breakout.index,
+    )
 
 
 def format_bos_state(bos: BosState) -> str:
