@@ -133,7 +133,10 @@ class WebullEquityExchange:
             symbol=symbol, category=self._Category.US_STOCK, timespan=timespan, count=count,
         )
         rows = _extract_bar_list(response)
-        return _parse_history_bar_response(rows)
+        data = _parse_history_bar_response(rows)
+        if timeframe == "1w":
+            data = _restamp_weekly_to_monday(data)
+        return data
 
     def fetch_ticker_price(self, symbol: str) -> float:
         response = self._data_client.market_data.get_snapshot([symbol], category=self._Category.US_STOCK)
@@ -202,6 +205,26 @@ def _parse_history_bar_response(rows: list[dict]) -> OHLCV:
         )
 
     return OHLCV(timestamps=timestamps, opens=opens, highs=highs, lows=lows, closes=closes, volumes=volumes)
+
+
+def _restamp_weekly_to_monday(data: OHLCV) -> OHLCV:
+    """Webull stamps a weekly bar with the week's LAST session (confirmed
+    via the Webull market-data API 2026-09-27: SPY's Sep 21-25 week came
+    back as "2026-09-25T04:00:00.000+0000", a Friday). Every other bar in
+    cdcx is stamped at its OPEN, and engine.py / vp_bos.py decide "still
+    forming?" as open + 1 week > now -- so a Friday stamp kept a finished
+    week "forming" until the NEXT Friday. Re-stamp to Monday 00:00 UTC of
+    the same week, the same convention robinhood_equity's weekly bars use.
+    OHLCV values are untouched."""
+    mondays = []
+    for ts in data.timestamps:
+        day = datetime.fromtimestamp(ts, tz=timezone.utc)
+        midnight = int(datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp())
+        mondays.append(midnight - day.weekday() * 86400)
+    return OHLCV(
+        timestamps=mondays, opens=data.opens, highs=data.highs, lows=data.lows,
+        closes=data.closes, volumes=data.volumes,
+    )
 
 
 def _normalize_timestamp(raw) -> int:

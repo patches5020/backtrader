@@ -129,3 +129,61 @@ def test_webull_environment_env_var_is_read_when_not_passed_explicitly(monkeypat
     calls = _spy_add_endpoint(monkeypatch)
     WebullEquityExchange(app_key="k", app_secret="s", region_id="us")
     assert calls == [("us", DEFAULT_SANDBOX_HOST)]
+
+
+# --- weekly bar stamping -----------------------------------------------------
+# Real shape from the Webull market-data API (2026-09-27): weekly bars are
+# stamped with the week's LAST session. SPY's Sep 21-25 week:
+_WEBULL_SPY_WEEKS = [
+    {"time": "2026-09-18T04:00:00.000+0000", "open": "757.120083", "close": "761.69",
+     "high": "762.00", "low": "747.743365", "volume": "268966609"},
+    {"time": "2026-09-25T04:00:00.000+0000", "open": "766.251", "close": "771.35",
+     "high": "775.14", "low": "763.245", "volume": "220869101"},
+]
+
+
+def _utc_midnight(y, m, d):
+    from datetime import datetime, timezone
+    return int(datetime(y, m, d, tzinfo=timezone.utc).timestamp())
+
+
+def _fake_webull_exchange(rows, seen_timespans):
+    from types import SimpleNamespace
+
+    exchange = object.__new__(WebullEquityExchange)
+    exchange._Timespan = SimpleNamespace(M60="M60", M240="M240", D="D", W="W")
+    exchange._Category = SimpleNamespace(US_STOCK="US_STOCK")
+
+    def get_history_bar(symbol, category, timespan, count):
+        seen_timespans.append(timespan)
+        return _FakeResponse(rows)
+
+    exchange._data_client = SimpleNamespace(market_data=SimpleNamespace(get_history_bar=get_history_bar))
+    return exchange
+
+
+def test_weekly_bars_are_restamped_to_monday_of_their_week():
+    seen = []
+    data = _fake_webull_exchange(_WEBULL_SPY_WEEKS, seen).fetch_ohlcv("SPY", timeframe="1w")
+    assert seen == ["W"]
+    assert data.timestamps == [_utc_midnight(2026, 9, 14), _utc_midnight(2026, 9, 21)]
+    assert data.closes == [761.69, 771.35]          # values untouched
+    assert data.volumes == [268966609.0, 220869101.0]
+
+
+def test_finished_webull_week_is_not_treated_as_forming_the_following_week():
+    from datetime import datetime, timezone
+    from cdcx.no_trade_gate import last_bar_is_forming
+
+    data = _fake_webull_exchange(_WEBULL_SPY_WEEKS, []).fetch_ohlcv("SPY", timeframe="1w")
+    next_wednesday = datetime(2026, 9, 30, 15, 0, tzinfo=timezone.utc).timestamp()
+    assert last_bar_is_forming(data.timestamps, "1w", next_wednesday) is False
+
+
+def test_daily_webull_bars_keep_their_own_stamp():
+    rows = [
+        {"time": "2026-09-24T04:00:00.000+0000", "open": "1", "close": "1", "high": "1", "low": "1", "volume": "1"},
+        {"time": "2026-09-25T04:00:00.000+0000", "open": "1", "close": "1", "high": "1", "low": "1", "volume": "1"},
+    ]
+    data = _fake_webull_exchange(rows, []).fetch_ohlcv("SPY", timeframe="1d")
+    assert data.timestamps == [_utc_midnight(2026, 9, 24) + 4 * 3600, _utc_midnight(2026, 9, 25) + 4 * 3600]
