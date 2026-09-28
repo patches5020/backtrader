@@ -4,6 +4,8 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-09-27
+- `cc613bb` Telegram single-reader: cdcx bot is the only @patches5020bot reader; send-only
+  cdcx-telegram CLI; Claude Code Telegram plugin disabled. Protected params: unchanged.
 - `88305f0` Read-only cdcx Telegram bot (/status /analyze /chart /report /help); never executes.
   Protected params: unchanged.
 - ChatGPT <-> Claude Code handoff layer added (`.ai/`, `CLAUDE.md`); validator checks 15 protected values
