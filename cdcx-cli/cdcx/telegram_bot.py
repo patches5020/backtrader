@@ -341,7 +341,8 @@ class Bot:
         report, report_file = result
         parts = [extract_summary(report), extract_decisions(report),
                  extract_block(report, "STRUCTURE SETUP"),
-                 extract_block(report, "MULTI-TIMEFRAME STRUCTURE / VP SUMMARY")]
+                 extract_block(report, "MULTI-TIMEFRAME STRUCTURE / VP SUMMARY"),
+                 extract_block(report, "AVP BULLISH REJECTION")]
         self.api.send_text(chat_id, "\n\n".join(p for p in parts if p), pre=True)
         self.api.send_text(chat_id, "NO TRADE = insufficient confirmation, not a sell signal. Not financial advice.")
         self.api.upload("sendDocument", chat_id, "document", report_file, caption="Full cdcx report")

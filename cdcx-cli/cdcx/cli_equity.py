@@ -452,6 +452,11 @@ def main(argv: list[str] | None = None) -> int:
             from . import vp_bos
             print()
             print(vp_bos.format_vp_bos_section(args.symbol, vp_bos.build_vp_bos_by_tf(raw_data_by_tf)))
+            # Paper/analysis-only AVP Bullish Rejection (avp_rejection.py) on 4H/1H.
+            from . import avp_rejection
+            print()
+            print(avp_rejection.format_avp_section(
+                args.symbol, avp_rejection.build_avp_by_tf(args.symbol, raw_data_by_tf)))
 
         if not any_success:
             return 1

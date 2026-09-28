@@ -443,6 +443,13 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict) -> bool
     print()
     print(vp_bos.format_vp_bos_section(symbol, vp_bos.build_vp_bos_by_tf({tf: cache[tf][1] for tf in vp_bos.TIMEFRAMES})))
 
+    # Paper/analysis-only AVP Bullish Rejection (avp_rejection.py) on 4H/1H.
+    # Never read by the gate and never overrides NO TRADE.
+    from . import avp_rejection
+    print()
+    print(avp_rejection.format_avp_section(
+        symbol, avp_rejection.build_avp_by_tf(symbol, {tf: cache[tf][1] for tf in avp_rejection.TIMEFRAMES})))
+
     return True
 
 
