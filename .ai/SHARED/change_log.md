@@ -3,6 +3,10 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-09-28
+- `c5bec3e` AVP Bullish Rejection added as a paper/analysis-only signal (stage 1 of 5). Protected params:
+  unchanged; never read by the gate.
+
 ## 2026-09-27
 - `cc613bb` Telegram single-reader: cdcx bot is the only @patches5020bot reader; send-only
   cdcx-telegram CLI; Claude Code Telegram plugin disabled. Protected params: unchanged.
