@@ -25,6 +25,14 @@ is not approval — ask the user.
 - New features are additive on top of the regime/confluence gates; VP-BOS stays advisory.
 - Temporal causality: a bar can only break a swing that already exists (`break_index > swing_index`).
 
+## Telegram (@patches5020bot) — single reader
+- The cdcx bot (`cdcx-telegram bot`) is the ONLY program that reads this bot's messages (getUpdates).
+  The Claude Code Telegram plugin is disabled for it; don't re-enable it or start a second reader.
+- To send the user a report or chart, use the send-only CLI (never reads):
+  `cdcx-telegram send "text"` (`--pre` for tables, `-` for stdin), `cdcx-telegram photo PATH --caption ...`,
+  `cdcx-telegram document PATH`. In Python: `cdcx.telegram_send.send_message/send_photo/send_document`.
+- Credentials live only in `cdcx-cli/.env` (`CDCX_TELEGRAM_BOT_TOKEN`, `CDCX_TELEGRAM_ALLOWED_CHAT_IDS`); never print them.
+
 ## Working conventions
 - Run the cdcx-cli test suite (`python -m pytest -q` in `cdcx-cli/`) before proposing a commit.
 - Commit / push / D: backup only when the user asks; each change gets a `backups/CHANGES-*.md` note + zip.

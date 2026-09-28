@@ -23,6 +23,7 @@ webull = ["webull-openapi-python-sdk"]
 [project.scripts]
 cdcx-ai = "cdcx.cli:main"
 cdcx-equity = "cdcx.cli_equity:main"
+cdcx-telegram = "cdcx.telegram_send:main"
 
 [build-system]
 requires = ["setuptools>=68.0"]

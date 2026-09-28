@@ -28,7 +28,7 @@ def test_parse_valid_commands(text, name, symbol):
 
 @pytest.mark.parametrize("text", [
     "/status XRP/USD;rm -rf ~", "/status $(whoami)", "/analyze ../../etc", "/status XRP/USD --execute",
-    "/status", "/execute XRP/USD", "/paper XRP/USD", "/claude do something", "hello",
+    "/status XRP/USD SPY", "/execute XRP/USD", "/paper XRP/USD", "/claude do something", "hello",
 ])
 def test_parse_refuses_anything_else(text):
     assert tb.parse_command(text).error
@@ -97,7 +97,7 @@ def _update(text, chat_id=ME):
     return {"update_id": 1, "message": {"chat": {"id": chat_id}, "text": text}}
 
 
-def _bot(tmp_path, runner=None, chart=lambda s: None):
+def _bot(tmp_path, runner=None, chart=lambda s, tf: None):
     def default_runner(argv, **kw):
         return SimpleNamespace(returncode=0, stdout=REPORT, stderr="")
     return tb.Bot(FakeApi(), {ME}, tmp_path, runner=runner or default_runner, chart=chart)
@@ -124,7 +124,7 @@ def test_status_sends_summary_only(tmp_path):
 def test_analyze_sends_summary_report_file_and_chart(tmp_path):
     shot = tmp_path / "chart.png"
     shot.write_bytes(b"png")
-    bot = _bot(tmp_path, chart=lambda s: shot)
+    bot = _bot(tmp_path, chart=lambda s, tf: shot)
     bot.handle_update(_update("/analyze XRP/USD"))
     body = "\n".join(t[1] for t in bot.api.texts)
     assert "MULTI-TIMEFRAME SUMMARY" in body and "SETUP: NO TRADE" in body and "VP-BOS CONFIRMED" in body
@@ -134,7 +134,7 @@ def test_analyze_sends_summary_report_file_and_chart(tmp_path):
 
 
 def test_chart_unavailable_is_reported_not_raised(tmp_path):
-    bot = _bot(tmp_path, chart=lambda s: None)
+    bot = _bot(tmp_path, chart=lambda s, tf: None)
     bot.handle_update(_update("/chart XRP/USD"))
     assert "Chart unavailable" in bot.api.texts[-1][1]
 
@@ -158,4 +158,5 @@ def test_bad_command_gets_a_helpful_reply(tmp_path):
 
 
 def test_allowed_ids_parsing():
-    assert tb._allowed_ids("8814026148, -100123,abc,") == {8814026148, -100123}
+    from cdcx.telegram_send import parse_chat_ids
+    assert parse_chat_ids("8814026148, -100123,abc,") == (8814026148, -100123)
