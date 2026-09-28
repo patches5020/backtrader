@@ -4,6 +4,8 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-09-27
+- `88305f0` Read-only cdcx Telegram bot (/status /analyze /chart /report /help); never executes.
+  Protected params: unchanged.
 - ChatGPT <-> Claude Code handoff layer added (`.ai/`, `CLAUDE.md`); validator checks 15 protected values
   against the live code. Protected params: unchanged.
 - `2f0a040` VP-BOS terminology locked (NONE / BOS-PENDING / VP-BOS / BOS-FAILED); summary table split into
