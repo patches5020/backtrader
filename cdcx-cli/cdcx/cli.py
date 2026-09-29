@@ -522,6 +522,24 @@ def _market_bias(signal) -> str:
     return "neutral"
 
 
+def _summary_signal(signal) -> str:
+    """Signal column text. A ranging row shows RANGE: there the 0-100 trend
+    label isn't the trade call (a +13 read labelled STRONG SELL on XRP 1H),
+    matching format_report's "DECISION: RANGE MODE". Display-only --
+    signal.signal and _market_bias are unchanged. Same convention as
+    cli_equity.py's own _summary_signal -- kept in sync deliberately."""
+    return "RANGE" if signal.regime.regime == "ranging" else signal.signal
+
+
+def _summary_market(signal) -> str:
+    """Market column text: "neutral" for a ranging row (a range has no
+    directional edge, and RANGE in the Signal column must not sit next to a
+    bearish/bullish read from the trend label), else _market_bias. Display-
+    only -- _market_bias itself is unchanged. Same convention as
+    cli_equity.py's own _summary_market -- kept in sync deliberately."""
+    return "neutral" if signal.regime.regime == "ranging" else _market_bias(signal)
+
+
 def _fvg_bias(signal) -> str:
     """bullish/bearish/neutral from the same fair_value_gap score already
     computed for this timeframe's own indicator breakdown (signed by the
@@ -579,8 +597,8 @@ def _print_summary_table(symbol: str, results: dict[str, object]) -> None:
             rsi_str = f"{signal.rsi_value:.1f}"
             vol_str = f"{signal.volume_ratio:.1f}x"
             print(
-                f"{tf:<12}{signal.total_score:<8}{signal.signal:<14}"
-                f"{_market_bias(signal):<10}{adx_str:<10}{rsi_str:<10}{vol_str:<10}"
+                f"{tf:<12}{signal.total_score:<8}{_summary_signal(signal):<14}"
+                f"{_summary_market(signal):<10}{adx_str:<10}{rsi_str:<10}{vol_str:<10}"
                 f"{atr_state:<12}{is_range:<7}{_fvg_bias(signal):<10}{_ema_bias(signal):<10}"
             )
     print(bar)

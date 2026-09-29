@@ -45,6 +45,21 @@ def test_ranging_report_with_rr_veto_still_shows_no_trade(monkeypatch):
     assert "RANGE MODE" not in report
 
 
+def test_summary_table_shows_range_for_ranging_rows_only(capsys):
+    from cdcx import cli, cli_equity
+
+    ranging = _signal("ranging", signal="STRONG SELL")
+    transitional = _signal("transitional", signal="WATCH")
+    for module in (cli, cli_equity):
+        module._print_summary_table("XRP/USD", {"1w": transitional, "1h": ranging})
+        rows = {line.split()[0]: tuple(line.split()[2:4]) for line in capsys.readouterr().out.splitlines()
+                if line.startswith(("1w", "1h"))}
+        assert rows == {"1w": ("WATCH", cli._market_bias(transitional)), "1h": ("RANGE", "neutral")}
+    # display-only: the underlying label and market bias are untouched
+    assert ranging.signal == "STRONG SELL"
+    assert cli._market_bias(ranging) == "bearish"
+
+
 def test_non_ranging_report_keeps_decision_line(monkeypatch):
     monkeypatch.setenv("NO_COLOR", "1")
     signal = _signal("trending", signal="BUY", execution_signal="BUY", decision="BUY", execution_reason="")

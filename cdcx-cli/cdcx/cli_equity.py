@@ -170,6 +170,20 @@ def _market_bias(signal) -> str:
     return "neutral"
 
 
+def _summary_signal(signal) -> str:
+    """Signal column text: RANGE for a ranging row, else the trend label.
+    Display-only. Same convention as cli.py's own _summary_signal -- kept
+    in sync deliberately."""
+    return "RANGE" if signal.regime.regime == "ranging" else signal.signal
+
+
+def _summary_market(signal) -> str:
+    """Market column text: "neutral" for a ranging row, else _market_bias.
+    Display-only. Same convention as cli.py's own _summary_market -- kept
+    in sync deliberately."""
+    return "neutral" if signal.regime.regime == "ranging" else _market_bias(signal)
+
+
 def _fvg_bias(signal) -> str:
     """bullish/bearish/neutral from the same fair_value_gap score already
     computed for this timeframe's own indicator breakdown. Same convention
@@ -225,8 +239,8 @@ def _print_summary_table(symbol: str, results: dict[str, object]) -> None:
             rsi_str = f"{signal.rsi_value:.1f}"
             vol_str = f"{signal.volume_ratio:.1f}x"
             print(
-                f"{tf:<12}{signal.total_score:<8}{signal.signal:<14}"
-                f"{_market_bias(signal):<10}{adx_str:<10}{rsi_str:<10}{vol_str:<10}"
+                f"{tf:<12}{signal.total_score:<8}{_summary_signal(signal):<14}"
+                f"{_summary_market(signal):<10}{adx_str:<10}{rsi_str:<10}{vol_str:<10}"
                 f"{atr_state:<12}{is_range:<7}{_fvg_bias(signal):<10}{_ema_bias(signal):<10}"
             )
     print(bar)
