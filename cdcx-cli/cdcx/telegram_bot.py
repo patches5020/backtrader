@@ -25,6 +25,9 @@ Deliberately NOT here: /paper, /execute, or anything that runs arbitrary
 commands. This bot only runs the same read-only analysis commands you run by
 hand -- never --execute -- so a leaked bot token can't trade or run code.
 Messages from any chat not in CDCX_TELEGRAM_ALLOWED_CHAT_IDS are ignored.
+Allowlisted text messages are also copied to data/telegram_inbox.db
+(cdcx.telegram_inbox) for the read-only inbox MCP server; a failed copy never
+stops the command.
 
 Run:  cdcx-telegram bot   (or: python -m cdcx.telegram_bot, from cdcx-cli)
 Standard library only (urllib) -- no extra package to install.
@@ -43,6 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
+from .telegram_inbox import INBOX_DB, TelegramInbox
 from .telegram_send import (
     CDCX_CLI_DIR, TelegramConfig, TelegramConfigError, TelegramSender, _chunks, load_config,
 )
@@ -287,9 +291,9 @@ def poll_forever(reader: TelegramReader, bot: "Bot", sender: TelegramSender,
 
 class Bot:
     def __init__(self, api: TelegramSender, allowed_chat_ids: set[int], workdir: Path,
-                 runner=subprocess.run, chart=take_chart):
+                 runner=subprocess.run, chart=take_chart, inbox: Optional[TelegramInbox] = None):
         self.api, self.allowed, self.workdir = api, allowed_chat_ids, workdir
-        self.runner, self.chart = runner, chart
+        self.runner, self.chart, self.inbox = runner, chart, inbox
 
     def handle_update(self, update: dict) -> None:
         message = update.get("message") or {}
@@ -299,6 +303,12 @@ class Bot:
         if chat_id not in self.allowed:
             print(f"ignored message from unlisted chat {chat_id}", file=sys.stderr)
             return
+        if self.inbox is not None:  # a local copy for the read-only inbox MCP; must never block the command
+            try:
+                self.inbox.store_message(update)
+            except Exception as exc:
+                print(f"inbox store failed ({type(exc).__name__}: {exc}); command still handled",
+                      file=sys.stderr, flush=True)
         cmd = parse_command(message["text"])
         print(f"{time.strftime('%H:%M:%S')} /{cmd.name or '?'} {cmd.symbol or ''} {cmd.timeframe or ''}"
               f"{'  -> ' + cmd.error if cmd.error else ''}", flush=True)
@@ -428,11 +438,16 @@ def main() -> int:
     workdir.mkdir(parents=True, exist_ok=True)
     sender = TelegramSender(config)
     me = sender.call("getMe").get("result", {})
+    try:
+        inbox, inbox_status = TelegramInbox(), f"ENABLED ({INBOX_DB})"
+    except Exception as exc:  # the inbox is optional; the bot runs without it
+        inbox, inbox_status = None, f"DISABLED ({type(exc).__name__}: {exc})"
     print(f"Telegram CDCX bot started: @{me.get('username')}\n"
           "Telegram receive: ENABLED (sole getUpdates reader)\n"
           "Telegram outbound sending: ENABLED\n"
+          f"Telegram inbox: {inbox_status}\n"
           f"Answering chats {list(config.chat_ids)}; default symbol {default_symbol()}. Ctrl+C to stop.", flush=True)
-    poll_forever(TelegramReader(config), Bot(sender, set(config.chat_ids), workdir), sender)
+    poll_forever(TelegramReader(config), Bot(sender, set(config.chat_ids), workdir, inbox=inbox), sender)
     return 0
 
 

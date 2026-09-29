@@ -19,6 +19,8 @@ backtrader = ["backtrader"]
 robinhood = ["robinhood-mcp", "robin_stocks"]
 # `cdcx-equity --source webull` / `cdcx.exchange.webull_equity`.
 webull = ["webull-openapi-python-sdk"]
+# `python -m cdcx.telegram_inbox_mcp`, the read-only Telegram inbox MCP server.
+inbox-mcp = ["mcp>=2"]
 
 [project.scripts]
 cdcx-ai = "cdcx.cli:main"

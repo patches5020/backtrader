@@ -72,6 +72,119 @@ def test_get_updates_appears_only_in_the_reader_source():
     assert 'READ_METHODS = frozenset({"getUpdates"})' in send_src
 
 
+# Test 3b -- the inbox MCP server can never become a reader or hold the token --------------
+
+INBOX_MODULES = ("telegram_inbox.py", "telegram_inbox_mcp.py")
+ALLOWED_INBOX_IMPORTS = {
+    "telegram_inbox.py": {"__future__", "os", "sqlite3", "time", "pathlib", "typing"},
+    "telegram_inbox_mcp.py": {"__future__", "typing", "mcp.server.mcpserver", "mcp.types", ".telegram_inbox"},
+}
+# Checked against the code (names, attributes, string literals) -- docstrings may explain what it lacks.
+# Running cdcx analysis/trading is blocked by the import allowlist below (no cdcx module but telegram_inbox).
+FORBIDDEN_IN_INBOX = ("getupdates", "setwebhook", "webhook", "api.telegram.org", "token",
+                      "telegram_send", "telegramreader", "telegramsender", "urllib", "requests",
+                      "http", "socket", "subprocess", "load_config", "dotenv", ".env", "getenv(\"telegram")
+
+
+def _inbox_src(name):
+    return (pathlib.Path(tb.__file__).parent / name).read_text()
+
+
+def _code_words(src):
+    import ast
+    tree = ast.parse(src)
+    docstrings = {id(n.body[0].value) for n in ast.walk(tree)
+                  if isinstance(n, (ast.Module, ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef))
+                  and n.body and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+    words = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            words.append(node.id)
+        elif isinstance(node, ast.Attribute):
+            words.append(node.attr)
+        elif isinstance(node, ast.alias):
+            words.append(node.name)
+        elif isinstance(node, ast.ImportFrom):
+            words.append(node.module or "")
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings:
+            words.append(node.value)
+    return [w.lower() for w in words]
+
+
+@pytest.mark.parametrize("name", INBOX_MODULES)
+def test_inbox_modules_have_no_telegram_access_or_credentials(name):
+    words = _code_words(_inbox_src(name))
+    assert sorted({f for f in FORBIDDEN_IN_INBOX for w in words if f in w}) == []
+
+
+def test_inbox_guard_catches_a_reader():
+    bad = 'import urllib.request\nURL = "https://api.telegram.org/bot%s/getUpdates" % TOKEN\n'
+    words = _code_words(bad)
+    assert {f for f in FORBIDDEN_IN_INBOX for w in words if f in w} >= {"urllib", "getupdates", "token"}
+
+
+@pytest.mark.parametrize("name", INBOX_MODULES)
+def test_inbox_modules_import_only_the_allowlist(name):
+    import ast
+    imported = set()
+    for node in ast.walk(ast.parse(_inbox_src(name))):
+        if isinstance(node, ast.Import):
+            imported |= {a.name for a in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            imported.add("." * node.level + (node.module or ""))
+    assert imported <= ALLOWED_INBOX_IMPORTS[name], imported - ALLOWED_INBOX_IMPORTS[name]
+
+
+def test_inbox_mcp_import_loads_no_telegram_client_and_needs_no_token(tmp_path):
+    pytest.importorskip("mcp.server.mcpserver")
+    import os
+    import subprocess
+    import sys
+    env = {k: v for k, v in os.environ.items() if "TELEGRAM" not in k}
+    env["CDCX_TELEGRAM_INBOX_DB"] = str(tmp_path / "inbox.db")
+    code = ("import json, sys, cdcx.telegram_inbox_mcp\n"
+            "print(json.dumps(sorted(m for m in sys.modules if m in ('cdcx.telegram_send', 'cdcx.telegram_bot', 'dotenv')"
+            " or m.startswith(('urllib.request', 'http.client', 'requests')))))")
+    out = subprocess.run([sys.executable, "-c", code], env=env, cwd=pathlib.Path(tb.__file__).parent.parent,
+                         capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    loaded = json.loads(out.stdout.strip().splitlines()[-1])
+    assert [m for m in loaded if m.startswith("cdcx.") or m == "dotenv"] == []
+
+
+def test_inbox_mcp_exposes_exactly_four_read_only_tools():
+    pytest.importorskip("mcp.server.mcpserver")
+    import asyncio
+    from cdcx import telegram_inbox_mcp as mcp_mod
+    tools = asyncio.run(mcp_mod.server.list_tools())
+    assert sorted(t.name for t in tools) == ["telegram_history", "telegram_latest", "telegram_search", "telegram_unread"]
+    assert all(t.annotations.read_only_hint and not t.annotations.destructive_hint for t in tools)
+
+
+def test_inbox_mcp_tools_make_no_network_calls_and_leave_db_unchanged(tmp_path, monkeypatch):
+    pytest.importorskip("mcp.server.mcpserver")
+    import hashlib
+    import socket
+    import urllib.request
+    from cdcx import telegram_inbox as ti
+    from cdcx import telegram_inbox_mcp as mcp_mod
+    db = tmp_path / "inbox.db"
+    ti.TelegramInbox(db).store_message(
+        {"update_id": 1, "message": {"message_id": 1, "date": 1, "text": "hi", "chat": {"id": 8814026148}}})
+    before = hashlib.sha256(db.read_bytes()).hexdigest()
+
+    def no_network(*a, **k):
+        raise AssertionError("inbox MCP tried to use the network")
+    monkeypatch.setattr(urllib.request, "urlopen", no_network)
+    monkeypatch.setattr(socket, "create_connection", no_network)
+    monkeypatch.setattr(mcp_mod, "reader", ti.InboxReader(db))
+    assert mcp_mod.telegram_latest()["messages"][0]["text"] == "hi"
+    assert mcp_mod.telegram_unread(since=0)["count"] == 1
+    assert mcp_mod.telegram_search("HI")["count"] == 1
+    assert mcp_mod.telegram_history()["count"] == 1
+    assert hashlib.sha256(db.read_bytes()).hexdigest() == before
+
+
 # Test 4 -- Claude Code plugin must not poll the same bot ---------------------------------
 
 def _claude_home(tmp_path, enabled, token=TOKEN):

@@ -6,3 +6,4 @@ __pycache__/
 cdcx_trades.json
 trading/
 backups/
+data/
