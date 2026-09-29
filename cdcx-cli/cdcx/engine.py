@@ -582,15 +582,26 @@ def format_report(signal: TradeSignal) -> str:
     lines.append(f"SETUP SCORE: {signal.setup_score:.0f}/100  (regime validity + direction + R:R + structure + confirmation)")
     lines.append("")
 
-    lines.append(f"DECISION: {signal.decision}")
-    # Decision Confidence is confidence IN THE DECISION shown above -- for a
-    # NO TRADE decision that means "how clearly this isn't a trade," not
-    # "how likely a trade would win." Same number as before (distance from
-    # the neutral midpoint), reframed so it doesn't contradict a NO TRADE
-    # call the way a bare "Confidence: 100%" used to.
-    lines.append(f"DECISION CONFIDENCE: {signal.confidence}%")
-    if signal.execution_reason:
-        lines.append(f"REASON: {signal.execution_reason}")
+    if signal.regime.regime == "ranging" and not signal.execution_reason:
+        # In a ranging regime the trend-scoring signal is not the trade call --
+        # the range-boundary strategy is. Printing it as the DECISION showed
+        # e.g. "STRONG SELL 74%" for a +13 (bullish-leaning) 1H range that the
+        # range strategy itself rated NO TRADE. Display-only: execution_signal
+        # (and signal.decision) are unchanged, so no gate or backtest moves.
+        lines.append("DECISION: RANGE MODE")
+        lines.append("REASON: Ranging regime -- the trade call comes from the RANGING STRATEGY SETUP, "
+                     "not the trend score.")
+        lines.append(f"TREND-SCORE SIGNAL: {signal.signal}  (context only, not a trade call in range mode)")
+    else:
+        lines.append(f"DECISION: {signal.decision}")
+        # Decision Confidence is confidence IN THE DECISION shown above -- for a
+        # NO TRADE decision that means "how clearly this isn't a trade," not
+        # "how likely a trade would win." Same number as before (distance from
+        # the neutral midpoint), reframed so it doesn't contradict a NO TRADE
+        # call the way a bare "Confidence: 100%" used to.
+        lines.append(f"DECISION CONFIDENCE: {signal.confidence}%")
+        if signal.execution_reason:
+            lines.append(f"REASON: {signal.execution_reason}")
     lines.append("")
     lines.append("-" * 49)
 
