@@ -3,6 +3,10 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-09-29
+- `dae2a2a` Ranging timeframes print `DECISION: RANGE MODE` instead of the 0-100 trend label (was "STRONG SELL"
+  on XRP 1H at +13). Display-only; execution_signal unchanged. Protected params: unchanged.
+
 ## 2026-09-28
 - `a290752` Telegram inbox (SQLite) + read-only inbox MCP server; the cdcx bot stays the sole Telegram reader.
   Informational only, no execution path. Protected params: unchanged.
