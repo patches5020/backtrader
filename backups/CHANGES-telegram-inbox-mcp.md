@@ -1,7 +1,7 @@
 # Telegram Inbox + Read-Only MCP — Change Summary
 
 Date: 2026-09-28
-Commit: a290752 (master, not pushed)
+Commit: a290752 (pushed to patches5020/backtrader master)
 Also changed OUTSIDE the repo: ~/.claude.json (user scope)
   telegram-inbox MCP server registered:
   /mnt/c/Users/patch/my-trade/bin/python -m cdcx.telegram_inbox_mcp
@@ -49,7 +49,14 @@ and cannot write the database.
   stored and still answered normally. A non-text update was ignored.
 - telegram_latest via MCP stdio (no TELEGRAM_* env) returned
   "TEST FROM TELEGRAM" (update 267944194). One bot process, no 409s.
-- "CHATGPT MCP TEST" had not arrived at commit time (not yet sent/delivered).
+- End-to-end test, 2026-09-28 23:17 CDT (04:17 UTC): "CHATGPT MCP TEST" sent
+  in the bot chat -> stored as update 267944195 (plain text, bot replied
+  "Send a command"); "/CHATGPT MCP TEST" -> update 267944196 (bot replied
+  "Unknown command"). telegram_latest via MCP stdio (no TELEGRAM_* env)
+  returned it; each message stored and answered within the same second.
+  Still one bot process (PID 49991), no 409s.
+- An earlier send never reached the bot: getWebhookInfo showed
+  pending_update_count 0 and no webhook, so it went to another chat.
 
 ## Notes
 - Bot runs detached (PID 49991 at start), log: cdcx-cli/trading/telegram_bot.log.
