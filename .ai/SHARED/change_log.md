@@ -4,6 +4,8 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-09-28
+- `a290752` Telegram inbox (SQLite) + read-only inbox MCP server; the cdcx bot stays the sole Telegram reader.
+  Informational only, no execution path. Protected params: unchanged.
 - `600bb1d` Stage-2 setup backtest harness; XRP result: no setup beats the baseline (AVP not supported yet).
   Out-of-sample split locked. Protected params: unchanged.
 - `c5bec3e` AVP Bullish Rejection added as a paper/analysis-only signal (stage 1 of 5). Protected params:
