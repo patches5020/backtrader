@@ -84,13 +84,15 @@ def test_chunks_respect_limit_and_keep_everything():
 
 class FakeApi:
     def __init__(self):
-        self.texts, self.uploads = [], []
+        self.texts, self.uploads, self.tags = [], [], []  # tags: (kind, source, symbol) per send
 
-    def send_text(self, chat_id, text, pre=False):
+    def send_text(self, chat_id, text, pre=False, source=None, symbol=None):
         self.texts.append((chat_id, text, pre))
+        self.tags.append(("text", source, symbol))
 
-    def upload(self, method, chat_id, field, path, caption=""):
+    def upload(self, method, chat_id, field, path, caption="", source=None, symbol=None):
         self.uploads.append((method, chat_id, path.name, caption))
+        self.tags.append((method, source, symbol))
 
 
 def _update(text, chat_id=ME):

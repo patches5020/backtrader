@@ -26,8 +26,9 @@ commands. This bot only runs the same read-only analysis commands you run by
 hand -- never --execute -- so a leaked bot token can't trade or run code.
 Messages from any chat not in CDCX_TELEGRAM_ALLOWED_CHAT_IDS are ignored.
 Allowlisted text messages are also copied to data/telegram_inbox.db
-(cdcx.telegram_inbox) for the read-only inbox MCP server; a failed copy never
-stops the command.
+(cdcx.telegram_inbox) for the read-only inbox MCP server, and the bot's own
+replies are copied there as direction='outbound' by its sender; a failed copy
+never stops the command.
 
 Run:  cdcx-telegram bot   (or: python -m cdcx.telegram_bot, from cdcx-cli)
 Standard library only (urllib) -- no extra package to install.
@@ -139,6 +140,11 @@ def analysis_argv(symbol: str, structure: bool) -> list[str]:
         return argv + (["--structure"] if structure else [])
     argv = ["cdcx-equity", "--source", "robinhood", "--symbol", symbol, "--timeframes", TIMEFRAMES]
     return argv + (["--structure-report"] if structure else [])
+
+
+def report_source(symbol: str) -> str:
+    """The inbox `source` tag for a report on SYMBOL: the engine that produced it."""
+    return "cdcx-ai" if is_crypto(symbol) else "cdcx-equity"
 
 
 def tradingview_symbol(symbol: str) -> str:
@@ -332,7 +338,8 @@ class Bot:
         if not summary:
             self.api.send_text(chat_id, f"No summary produced (exit {code}):\n{report[-1500:]}", pre=True)
             return
-        self.api.send_text(chat_id, f"{summary}\n\n{extract_decisions(report)}", pre=True)
+        self.api.send_text(chat_id, f"{summary}\n\n{extract_decisions(report)}", pre=True,
+                           source=report_source(cmd.symbol), symbol=cmd.symbol)
 
     def _full_report(self, chat_id: int, symbol: str) -> Optional[tuple[str, Path]]:
         code, report = run_analysis(symbol, structure=True, runner=self.runner)
@@ -353,9 +360,11 @@ class Bot:
                  extract_block(report, "STRUCTURE SETUP"),
                  extract_block(report, "MULTI-TIMEFRAME STRUCTURE / VP SUMMARY"),
                  extract_block(report, "AVP BULLISH REJECTION")]
-        self.api.send_text(chat_id, "\n\n".join(p for p in parts if p), pre=True)
+        tag = {"source": report_source(cmd.symbol), "symbol": cmd.symbol}
+        self.api.send_text(chat_id, "\n\n".join(p for p in parts if p), pre=True, **tag)
         self.api.send_text(chat_id, "NO TRADE = insufficient confirmation, not a sell signal. Not financial advice.")
-        self.api.upload("sendDocument", chat_id, "document", report_file, caption="Full cdcx report")
+        self.api.upload("sendDocument", chat_id, "document", report_file, caption=f"Full cdcx report -- {cmd.symbol}",
+                        **tag)
         self._send_chart(chat_id, cmd.symbol, "1H")
 
     def _cmd_chart(self, chat_id: int, cmd: Command) -> None:
@@ -366,7 +375,8 @@ class Bot:
             self.api.send_text(chat_id, f"Taking {symbol} {timeframe} chart...")
         path = self.chart(symbol, timeframe)
         if path and path.exists():
-            self.api.upload("sendPhoto", chat_id, "photo", path, caption=f"{tradingview_symbol(symbol)} {timeframe}")
+            self.api.upload("sendPhoto", chat_id, "photo", path, caption=f"{tradingview_symbol(symbol)} {timeframe}",
+                            source=report_source(symbol), symbol=symbol)
         else:
             self.api.send_text(chat_id, "Chart unavailable -- is TradingView running with CDP (port 9222)?")
 
@@ -375,7 +385,8 @@ class Bot:
             self.api.send_text(chat_id, f"Building full {cmd.symbol} report (about a minute)...")
             result = self._full_report(chat_id, cmd.symbol)
             if result:
-                self.api.upload("sendDocument", chat_id, "document", result[1], caption=f"Full cdcx report -- {cmd.symbol}")
+                self.api.upload("sendDocument", chat_id, "document", result[1], caption=f"Full cdcx report -- {cmd.symbol}",
+                                source=report_source(cmd.symbol), symbol=cmd.symbol)
             return
         proc = self.runner([sys.executable, str(REPO_DIR / ".ai" / "prepare_handoff.py")], cwd=REPO_DIR,
                            capture_output=True, text=True, timeout=120)
@@ -436,12 +447,13 @@ def main() -> int:
         return 1
     workdir = CDCX_CLI_DIR / "trading" / "telegram_reports"
     workdir.mkdir(parents=True, exist_ok=True)
-    sender = TelegramSender(config)
-    me = sender.call("getMe").get("result", {})
     try:
-        inbox, inbox_status = TelegramInbox(), f"ENABLED ({INBOX_DB})"
+        inbox, inbox_status = TelegramInbox(), f"ENABLED ({INBOX_DB}; inbound + outbound)"
     except Exception as exc:  # the inbox is optional; the bot runs without it
         inbox, inbox_status = None, f"DISABLED ({type(exc).__name__}: {exc})"
+    # The bot's replies are copied as outbound too: untagged ones as 'cdcx-bot', reports with their engine.
+    sender = TelegramSender(config, inbox=inbox, default_source="cdcx-bot")
+    me = sender.call("getMe").get("result", {})
     print(f"Telegram CDCX bot started: @{me.get('username')}\n"
           "Telegram receive: ENABLED (sole getUpdates reader)\n"
           "Telegram outbound sending: ENABLED\n"

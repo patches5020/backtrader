@@ -152,12 +152,13 @@ def test_inbox_mcp_import_loads_no_telegram_client_and_needs_no_token(tmp_path):
     assert [m for m in loaded if m.startswith("cdcx.") or m == "dotenv"] == []
 
 
-def test_inbox_mcp_exposes_exactly_four_read_only_tools():
+def test_inbox_mcp_exposes_exactly_five_read_only_tools():
     pytest.importorskip("mcp.server.mcpserver")
     import asyncio
     from cdcx import telegram_inbox_mcp as mcp_mod
     tools = asyncio.run(mcp_mod.server.list_tools())
-    assert sorted(t.name for t in tools) == ["telegram_history", "telegram_latest", "telegram_search", "telegram_unread"]
+    assert sorted(t.name for t in tools) == ["telegram_history", "telegram_latest", "telegram_latest_report",
+                                                 "telegram_search", "telegram_unread"]
     assert all(t.annotations.read_only_hint and not t.annotations.destructive_hint for t in tools)
 
 
