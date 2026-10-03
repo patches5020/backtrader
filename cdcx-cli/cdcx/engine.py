@@ -109,6 +109,12 @@ class TradeSignal:
                                              # R-multiples used -- see risk.resolve_tp_ratios()
     tp_mode: str = "atr"                    # "atr" (fixed R-multiples, default) or "structural"
                                              # (nearest real resistance/support) -- see risk.resolve_tp_mode()
+    # Display-only: the same plan built for BOTH directions from this snapshot, shown in the report
+    # beside the existing entry/stop/TP lines. Same entry, ATR, multiplier, tp_ratios and tp_mode as
+    # stop_loss/take_profits above (one _build_plan), so the side cdcx picked matches them exactly.
+    # Never read by scoring, confluence, gates or execution. Shape:
+    #   {"long": {"entry", "stop", "breakeven", "take_profits": {"TP1".."TP4"}, "rr"}, "short": {...}}
+    directional_levels: dict = field(default_factory=dict)
 
     # Raw indicator readings for the MTF summary table (ADX/RSI/VOL columns)
     # -- same period (17, atr_ema_variant1.EMA_LENGTH) every other smoothed
@@ -437,6 +443,20 @@ def analyze_ohlcv(
     # either extreme (Strong Buy or Strong Sell), lowest near Neutral.
     confidence = round(abs(total - 50) * 2, 1)
 
+    # Both directional plans, for display beside the existing levels (additive -- the existing
+    # stop_loss/take_profits/rr above are untouched). Breakeven = entry: where trade_manager
+    # moves the stop once TP1 is hit (rule G).
+    directional_levels = {}
+    for side, plan_direction in (("long", "up"), ("short", "down")):
+        side_stop, side_tps, _, side_rr = _build_plan(plan_direction)
+        directional_levels[side] = {
+            "entry": price,
+            "stop": _round_price(side_stop),
+            "breakeven": price,
+            "take_profits": {k: _round_price(v) for k, v in side_tps.items()},
+            "rr": round(side_rr, 2) if side_rr else None,
+        }
+
     # --- Decomposed scoring (AI Score rebuild) ------------------------------
     # total_score/signal above stay 0-100 (unchanged, still used everywhere
     # else in the codebase), but that scale has a real flaw on its own: a
@@ -538,6 +558,7 @@ def analyze_ohlcv(
         atr_multiplier=atr_multiplier,
         tp_ratios=TP_RATIOS,
         tp_mode=tp_mode,
+        directional_levels=directional_levels,
         adx_value=round(adx_result.adx, 2),
         rsi_value=round(rsi_result.value, 2),
         volume_ratio=round(volume_ratio, 2),
@@ -614,7 +635,18 @@ def format_report(signal: TradeSignal) -> str:
     lines.append("")
     lines.append("-" * 49)
     lines.append(f"ATR Timeframe: {signal.timeframe or 'n/a'}   ATR Length: {signal.atr_length}")
+    long_levels = signal.directional_levels.get("long")
+    short_levels = signal.directional_levels.get("short")
+
+    def _both(get, fmt=str):
+        """The Long/Short lines shown under an existing line (additive; nothing when absent)."""
+        if long_levels is None or short_levels is None:
+            return
+        lines.append(f"  Long:      {fmt(get(long_levels))}")
+        lines.append(f"  Short:     {fmt(get(short_levels))}")
+
     lines.append(f"Entry:       {signal.entry:.6f}")
+    _both(lambda d: d["entry"], lambda v: f"{v:.6f}")
     lines.append(f"ATR:         {signal.atr:.6f}")
     atr_x_multiplier = abs(signal.entry - signal.stop_loss)
     lines.append(
@@ -622,11 +654,17 @@ def format_report(signal: TradeSignal) -> str:
         "the distance added/subtracted for the stop)"
     )
     lines.append(f"Stop Loss:   {signal.stop_loss}")
+    _both(lambda d: d["stop"])
+    if long_levels is not None:
+        lines.append(f"Breakeven:   {signal.entry:.6f}  (stop moves here once TP1 is hit)")
+        _both(lambda d: d["breakeven"], lambda v: f"{v:.6f}")
     tp_mode_note = "ATR R-multiples" if signal.tp_mode == "atr" else "structural levels, ATR fallback"
     lines.append(f"Take Profits ({tp_mode_note}):")
     for tp_name, tp_price in signal.take_profits.items():
         lines.append(f"{tp_name}: {tp_price}")
+        _both(lambda d, n=tp_name: d["take_profits"][n])
     lines.append("")
     lines.append(f"Risk/Reward: 1 : {signal.risk_reward_ratio}")
+    _both(lambda d: d["rr"], lambda v: f"1 : {v}")
     lines.append(bar)
     return "\n".join(lines)
