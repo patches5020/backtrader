@@ -3,6 +3,16 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-03
+- `3c83ab6` CDCX-AI TRADE ANALYSIS shows Long/Short entry, stop, breakeven, TP1-TP4 and R:R under the existing
+  lines, using the same 1.5x ATR + 2.2/2.6/3.2/4.5 R ladder (user's choice over 1R-4R). Display-only; existing
+  lines unchanged. Protected params: unchanged.
+
+## 2026-10-02
+- `e9ad14f` Telegram inbox now stores sent reports (direction=outbound) tagged with source/symbol/message_type;
+  new read-only `telegram_latest_report` MCP tool; opt-in localhost+bearer HTTP transport for an OpenAI Secure MCP
+  Tunnel. Still one getUpdates reader. Local release gate passed (reports 153 -> 154). Protected params: unchanged.
+
 ## 2026-09-29
 - `ebbf867` MULTI-TIMEFRAME SUMMARY: ranging rows show Signal `RANGE` / Market `neutral` (crypto + equity).
   Display-only; signal.signal and _market_bias unchanged. Protected params: unchanged.
