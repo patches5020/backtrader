@@ -4,6 +4,14 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-04
+- `bbe08a2` Telegram bot: `/status` and `/analyze` take timeframes (1m 5m 10m 15m 30m 45m 1h 4h 1d 1w; default
+  1w,1d,4h,1h); `/chart` adds 1M/10M/30M/45M. Whitelisted tokens only, never --execute. Protected params: unchanged.
+- `fce5dff` Timeframes below 1h: 10m/45m built from native 5m/15m candles (UTC-aligned); 1m/5m/15m/30m native.
+  Reported only -- confluence still 1h/4h/1d/1w. Protected params: unchanged.
+- `c6b2aa6` Windows logon task + WSL supervisor keeping the Telegram bot (single reader) and the XRP watcher
+  running. Protected params: unchanged.
+- `137ab1f` Read-only RANGE MODE PREVIEW without --execute (shares inputs with --execute); VP-BOS PENDING note.
+  Display-only. Protected params: unchanged.
 - `a15e764` Committed the Sep 29–30 leftovers: dated `.ai/SHARED/reports/` (XRP MTF report + trade status), the
   archived stray trade log, and their change notes/zips. Data and notes only. Protected params: unchanged.
 - `b26455d` XRP/USD BOS trigger-map watcher (`trading/alerts/xrp_bos_trigger_watch.py`): Telegram alert once per
