@@ -1,0 +1,121 @@
+[
+  {
+    "id": "a9bd032f-6a21-4b8e-9f6b-94a5fd8dd8ae",
+    "symbol": "XRP/USDT",
+    "direction": "long",
+    "entry_price": 1.265,
+    "atr": 0.03043232,
+    "initial_stop": 1.21935152,
+    "current_stop": 1.21935152,
+    "tp_levels": [
+      1.36543,
+      1.38369,
+      1.41108,
+      1.47042
+    ],
+    "position_size": 4381.30689127,
+    "risk_amount": 200.0,
+    "account_balance": 10000.0,
+    "confluence_timeframes": [
+      "1h",
+      "4h"
+    ],
+    "confluence_score": 3,
+    "tp_index_reached": -1,
+    "tp_close_pcts": [
+      25.0,
+      25.0,
+      25.0,
+      25.0
+    ],
+    "remaining_size": 4381.30689127,
+    "partial_closes": [],
+    "status": "open",
+    "close_price": null,
+    "close_reason": null,
+    "realized_pnl": 0.0,
+    "realized_pnl_pct": 0.0,
+    "safety_warning": null,
+    "opened_at": 1787262291.887926,
+    "closed_at": null
+  },
+  {
+    "id": "e1c2a85b-8dcd-4719-ae70-94a7009f4b4f",
+    "symbol": "SPCX",
+    "direction": "short",
+    "entry_price": 152.78,
+    "atr": 2.26898784,
+    "initial_stop": 156.18348176,
+    "current_stop": 156.18348176,
+    "tp_levels": [
+      145.292,
+      143.931,
+      141.889,
+      137.464
+    ],
+    "position_size": 5.8763353,
+    "risk_amount": 20.0,
+    "account_balance": 1000.0,
+    "confluence_timeframes": [
+      "1h"
+    ],
+    "confluence_score": 29,
+    "tp_index_reached": -1,
+    "tp_close_pcts": [
+      25.0,
+      25.0,
+      25.0,
+      25.0
+    ],
+    "remaining_size": 5.8763353,
+    "partial_closes": [],
+    "status": "open",
+    "close_price": null,
+    "close_reason": null,
+    "realized_pnl": 0.0,
+    "realized_pnl_pct": 0.0,
+    "safety_warning": null,
+    "opened_at": 1789772595.0574336,
+    "closed_at": null
+  },
+  {
+    "id": "7000a948-e555-4795-ac83-fba6a9d522b7",
+    "symbol": "XRP/USD",
+    "direction": "long",
+    "entry_price": 1.5324,
+    "atr": 0.09788049,
+    "initial_stop": 1.38557927,
+    "current_stop": 1.38557927,
+    "tp_levels": [
+      1.85541,
+      1.91413,
+      2.00223,
+      2.19309
+    ],
+    "position_size": 0.0,
+    "risk_amount": 0.0,
+    "account_balance": 0.0,
+    "confluence_timeframes": [
+      "1d",
+      "1w"
+    ],
+    "confluence_score": 7,
+    "tp_index_reached": -1,
+    "tp_close_pcts": [
+      25.0,
+      25.0,
+      25.0,
+      25.0
+    ],
+    "remaining_size": 0.0,
+    "partial_closes": [],
+    "status": "open",
+    "close_price": null,
+    "close_reason": null,
+    "realized_pnl": 0.0,
+    "realized_pnl_pct": 0.0,
+    "safety_warning": null,
+    "opened_at": 1790268622.6646707,
+    "closed_at": null
+  }
+]

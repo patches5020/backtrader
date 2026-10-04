@@ -12,7 +12,8 @@ through the user.
 │   ├── risk_parameters.json      PROTECTED numbers, each tied to the code attribute it must match
 │   ├── strategy_spec.md          how cdcx decides, plus the user's standing design rules
 │   ├── system_state.json         commit / branch / test count (generated, git-ignored)
-│   └── change_log.md             one line per change, and whether protected params moved
+│   ├── change_log.md             one line per change, and whether protected params moved
+│   └── reports/                  dated cdcx market reports + trade status (data, not tasks)
 └── HANDOFF/
     ├── chatgpt_to_claude.json    ChatGPT's task for Claude
     ├── claude_to_chatgpt.json    Claude's result for ChatGPT

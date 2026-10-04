@@ -1,0 +1,402 @@
+# cdcx-ai MTF report -- XRP/USD -- 2026-09-30
+# Command: cdcx-ai --symbol XRP/USD --timeframes 1h,4h,1d,1w --structure
+# Run: 2026-09-30 ~20:25 UTC (snapshots 1790799922-1790799929), Crypto.com feed
+# Raw, unedited output. PAPER mode; analysis only, no --execute.
+
+=================================================
+              CDCX AI TRADE ANALYSIS             
+=================================================
+
+Symbol: XRP/USD   Timeframe: 1h
+Snapshot: 1790799922  (entry/atr/stop/TP all computed from this single pull)
+
+MARKET REGIME: 🔴 [RED] NO TRADE (TRANSITION)
+  Trend: 0/10   Range: 7/10
+
+DIRECTION BIAS: BEARISH  (direction score: -27.0 / 100)
+TRADE QUALITY: 69/100  (breadth of indicator confirmation)
+SETUP SCORE: 35/100  (regime validity + direction + R:R + structure + confirmation)
+
+DECISION: NO TRADE
+DECISION CONFIDENCE: 100.0%
+REASON: Market regime is transitional -- no trend or range edge to trade.
+
+-------------------------------------------------
+Ema Trend                -15  (Bearish)
+Atr Expansion            +4  (Flat)
+Adx Trend Strength       +0  (No Trend / Choppy)
+Bollinger Bands          -10  (Riding Lower Band (Bearish Continuation))
+Candlestick Patterns     +0  (No Aligned Pattern)
+Rsi Momentum             +0  (Neutral)
+Fib Retracement          +0  (No Level Confluence)
+Fib Extension            +8  (Full Target Ladder Ahead)
+Fair Value Gap           -15  (Bearish FVG)
+Fixed Volume Profile     -6  (Below POC)
+Anchored Volume Profile  -6  (Below POC)
+Market Structure         +5  (Structure Forming, No Confirmed BOS)
+Risk Reward              +8  (1 : 2.2)
+
+-------------------------------------------------
+ATR Timeframe: 1h   ATR Length: 11
+Entry:       1.494500
+ATR:         0.016105
+ATR x mult:  0.024160  (1.5x ATR -- the distance added/subtracted for the stop)
+Stop Loss:   1.51866
+Take Profits (ATR R-multiples):
+TP1: 1.44135
+TP2: 1.43169
+TP3: 1.4172
+TP4: 1.38579
+
+Risk/Reward: 1 : 2.2
+=================================================
+
+-------------------------------------------------
+       STRUCTURE — 1H (entry confirmation)       
+-------------------------------------------------
+POC (white):         1.495181
+Resistance (green):  1.522977
+Support (red):       1.483269
+FVGs:                36 total, 5 unfilled
+Condition:           TRANSITIONAL
+-------------------------------------------------
+
+=======================================================
+             MARKET STRUCTURE -- XRP/USD 1h            
+=======================================================
+
+REGIME: 🔴 NO TRADE (TRANSITION)
+  Trend: 0/10   Range: 7/10
+
+PRICE:  1.4945
+POC:    1.49518
+VAH:    1.52298   (value area high)
+VAL:    1.48327   (value area low)
+  -> price is inside the value area, below POC
+VP SETUP: Value Area Reversal (bearish)
+
+Regime is TRANSITIONAL -- neither a clean range nor a clean trend right now.
+The POC/VAH/VAL levels above are still real, just don't read them as a settled range yet.
+
+FVG: Bearish gap [1.5004, 1.504], unfilled
+
+SWING STRUCTURE: LL / HH / LL / LH
+BREAK OF STRUCTURE: None
+BOS STATE: No confirmed break
+=======================================================
+
+=================================================
+              CDCX AI TRADE ANALYSIS             
+=================================================
+
+Symbol: XRP/USD   Timeframe: 4h
+Snapshot: 1790799924  (entry/atr/stop/TP all computed from this single pull)
+
+MARKET REGIME: 🔴 [RED] NO TRADE (TRANSITION)
+  Trend: 0/10   Range: 7/10
+
+DIRECTION BIAS: BEARISH  (direction score: -24.0 / 100)
+TRADE QUALITY: 77/100  (breadth of indicator confirmation)
+SETUP SCORE: 35/100  (regime validity + direction + R:R + structure + confirmation)
+
+DECISION: NO TRADE
+DECISION CONFIDENCE: 100.0%
+REASON: Market regime is transitional -- no trend or range edge to trade.
+
+-------------------------------------------------
+Ema Trend                -15  (Bearish)
+Atr Expansion            +4  (Flat)
+Adx Trend Strength       +0  (No Trend / Choppy)
+Bollinger Bands          -10  (Riding Lower Band (Bearish Continuation))
+Candlestick Patterns     +0  (No Aligned Pattern)
+Rsi Momentum             +0  (Neutral)
+Fib Retracement          -9  (Bounce from 78.6%)
+Fib Extension            +8  (Full Target Ladder Ahead)
+Fair Value Gap           -15  (Bearish FVG)
+Fixed Volume Profile     -6  (Below POC)
+Anchored Volume Profile  +6  (Above POC)
+Market Structure         +5  (Structure Forming, No Confirmed BOS)
+Risk Reward              +8  (1 : 2.2)
+
+-------------------------------------------------
+ATR Timeframe: 4h   ATR Length: 11
+Entry:       1.494500
+ATR:         0.031077
+ATR x mult:  0.046620  (1.5x ATR -- the distance added/subtracted for the stop)
+Stop Loss:   1.54112
+Take Profits (ATR R-multiples):
+TP1: 1.39194
+TP2: 1.3733
+TP3: 1.34533
+TP4: 1.28473
+
+Risk/Reward: 1 : 2.2
+=================================================
+
+-------------------------------------------------
+          STRUCTURE — 4H (primary setup)         
+-------------------------------------------------
+POC (white):         1.495171
+Resistance (green):  1.614929
+Support (red):       1.392521
+FVGs:                31 total, 9 unfilled
+Condition:           TRANSITIONAL
+-------------------------------------------------
+
+=======================================================
+             MARKET STRUCTURE -- XRP/USD 4h            
+=======================================================
+
+REGIME: 🔴 NO TRADE (TRANSITION)
+  Trend: 0/10   Range: 7/10
+
+PRICE:  1.4945
+POC:    1.49517
+VAH:    1.61493   (value area high)
+VAL:    1.39252   (value area low)
+  -> price is inside the value area, below POC
+VP SETUP: None
+
+Regime is TRANSITIONAL -- neither a clean range nor a clean trend right now.
+The POC/VAH/VAL levels above are still real, just don't read them as a settled range yet.
+
+FVG: Bullish gap [1.3914, 1.3918], unfilled
+
+SWING STRUCTURE: LL / HH / HL / LH
+BREAK OF STRUCTURE: None
+BOS STATE: No confirmed break
+=======================================================
+
+=================================================
+              CDCX AI TRADE ANALYSIS             
+=================================================
+
+Symbol: XRP/USD   Timeframe: 1d
+Snapshot: 1790799926  (entry/atr/stop/TP all computed from this single pull)
+
+MARKET REGIME: 🔴 [RED] NO TRADE (TRANSITION)
+  Trend: 6/10   Range: 3/10
+
+DIRECTION BIAS: BULLISH  (direction score: +100.0 / 100)
+TRADE QUALITY: 92/100  (breadth of indicator confirmation)
+SETUP SCORE: 69/100  (regime validity + direction + R:R + structure + confirmation)
+
+DECISION: NO TRADE
+DECISION CONFIDENCE: 100.0%
+REASON: Market regime is transitional -- no trend or range edge to trade.
+
+-------------------------------------------------
+Ema Trend                +15  (Bullish)
+Atr Expansion            +4  (Flat)
+Adx Trend Strength       +10  (Strong Trend (+DI Confirmed))
+Bollinger Bands          +10  (Riding Upper Band (Bullish Continuation))
+Candlestick Patterns     +3  (Doji (Indecision), Bullish Harami)
+Rsi Momentum             +12  (Bullish Momentum)
+Fib Retracement          +0  (No Level Confluence)
+Fib Extension            +8  (Full Target Ladder Ahead)
+Fair Value Gap           +15  (Bullish FVG)
+Fixed Volume Profile     +10  (Above Value Area)
+Anchored Volume Profile  +6  (Above POC)
+Market Structure         +5  (Structure Forming, No Confirmed BOS)
+Risk Reward              +8  (1 : 2.2)
+
+-------------------------------------------------
+ATR Timeframe: 1d   ATR Length: 11
+Entry:       1.494500
+ATR:         0.088055
+ATR x mult:  0.132080  (1.5x ATR -- the distance added/subtracted for the stop)
+Stop Loss:   1.36242
+Take Profits (ATR R-multiples):
+TP1: 1.78508
+TP2: 1.83791
+TP3: 1.91716
+TP4: 2.08887
+
+Risk/Reward: 1 : 2.2
+=================================================
+
+-------------------------------------------------
+     STRUCTURE — 1D (major volume structure)     
+-------------------------------------------------
+POC (white):         1.090040
+Resistance (green):  1.417335
+Support (red):       1.000777
+FVGs:                37 total, 14 unfilled
+Condition:           TRANSITIONAL
+-------------------------------------------------
+
+=======================================================
+             MARKET STRUCTURE -- XRP/USD 1d            
+=======================================================
+
+REGIME: 🔴 NO TRADE (TRANSITION)
+  Trend: 6/10   Range: 3/10
+
+PRICE:  1.4945
+POC:    1.09004
+VAH:    1.41734   (value area high)
+VAL:    1.00078   (value area low)
+  -> price is ABOVE the value area (beyond VAH) -- outside the accepted range
+VP SETUP: Value Area Breakout (bullish)
+
+Regime is TRANSITIONAL -- neither a clean range nor a clean trend right now.
+The POC/VAH/VAL levels above are still real, just don't read them as a settled range yet.
+
+FVG: Bullish gap [1.3191, 1.3928], unfilled
+
+SWING STRUCTURE: HH / LL / HH / HL
+BREAK OF STRUCTURE: None
+BOS STATE: No confirmed break
+=======================================================
+
+=================================================
+              CDCX AI TRADE ANALYSIS             
+=================================================
+
+Symbol: XRP/USD   Timeframe: 1w
+Snapshot: 1790799929  (entry/atr/stop/TP all computed from this single pull)
+
+MARKET REGIME: 🔴 [RED] NO TRADE (TRANSITION)
+  Trend: 6/10   Range: 3/10
+
+DIRECTION BIAS: BULLISH  (direction score: +79.0 / 100)
+TRADE QUALITY: 85/100  (breadth of indicator confirmation)
+SETUP SCORE: 62/100  (regime validity + direction + R:R + structure + confirmation)
+
+DECISION: NO TRADE
+DECISION CONFIDENCE: 58.0%
+REASON: Market regime is transitional -- no trend or range edge to trade.
+
+-------------------------------------------------
+Ema Trend                +15  (Bullish)
+Atr Expansion            +4  (Flat)
+Adx Trend Strength       +10  (Strong Trend (+DI Confirmed))
+Bollinger Bands          +10  (Riding Upper Band (Bullish Continuation))
+Candlestick Patterns     +0  (No Aligned Pattern)
+Rsi Momentum             +8  (Early Bullish Momentum)
+Fib Retracement          +0  (No Level Confluence)
+Fib Extension            +8  (Full Target Ladder Ahead)
+Fair Value Gap           +15  (Bullish FVG)
+Fixed Volume Profile     -10  (Below Value Area)
+Anchored Volume Profile  +6  (Above POC)
+Market Structure         +5  (Structure Forming, No Confirmed BOS)
+Risk Reward              +8  (1 : 2.2)
+
+-------------------------------------------------
+ATR Timeframe: 1w   ATR Length: 11
+Entry:       1.494500
+ATR:         0.186190
+ATR x mult:  0.279290  (1.5x ATR -- the distance added/subtracted for the stop)
+Stop Loss:   1.21521
+Take Profits (ATR R-multiples):
+TP1: 2.10893
+TP2: 2.22064
+TP3: 2.38821
+TP4: 2.75129
+
+Risk/Reward: 1 : 2.2
+=================================================
+
+-------------------------------------------------
+         STRUCTURE — 1W (major structure)        
+-------------------------------------------------
+POC (white):         2.278525
+Resistance (green):  3.203108
+Support (red):       1.618108
+FVGs:                35 total, 16 unfilled
+Condition:           TRANSITIONAL
+-------------------------------------------------
+
+=======================================================
+             MARKET STRUCTURE -- XRP/USD 1w            
+=======================================================
+
+REGIME: 🔴 NO TRADE (TRANSITION)
+  Trend: 6/10   Range: 3/10
+
+PRICE:  1.4945
+POC:    2.27852
+VAH:    3.20311   (value area high)
+VAL:    1.61811   (value area low)
+  -> price is BELOW the value area (beyond VAL) -- outside the accepted range
+VP SETUP: Value Area Breakout (bearish)
+
+Regime is TRANSITIONAL -- neither a clean range nor a clean trend right now.
+The POC/VAH/VAL levels above are still real, just don't read them as a settled range yet.
+
+FVG: Bullish gap [1.0402, 1.3352], unfilled
+
+SWING STRUCTURE: LL / LL / HH / HL
+BREAK OF STRUCTURE: None
+BOS STATE: No confirmed break
+=======================================================
+
+=================================================================================================================
+                                        MULTI-TIMEFRAME SUMMARY -- XRP/USD                                       
+=================================================================================================================
+Timeframe   Score   Signal        Market    ADX(17)   RSI(17)   VOL(17)   ATR         Range  FVG       EMA       
+-----------------------------------------------------------------------------------------------------------------
+1h          0.0     STRONG SELL   bearish   10.7      47.2      0.8x      flat        no     bearish   bearish   
+4h          0.0     STRONG SELL   bearish   16.9      47.2      0.9x      flat        no     bearish   bearish   
+1d          100.0   STRONG BUY    bullish   40.6      56.7      1.0x      flat        no     bullish   bullish   
+1w          79.0    WATCH         neutral   25.5      52.7      1.2x      flat        no     bullish   bullish   
+=================================================================================================================
+
+ATR ALIGNMENT: 0/4 timeframes expanding
+  1W: Flat
+  1D: Flat
+  4H: Flat
+  1H: Flat
+VOLUME PROFILE HIERARCHY:
+  1W [macro location]: Value Area Breakout (bearish)
+  1D [major trend/value location]: Value Area Breakout (bullish)
+  4H [setup location]: None
+  1H [entry-area location]: Value Area Reversal (bearish)
+
+-------------------------------------------------
+          STRUCTURE SETUP (1W/1D/4H/1H)          
+-------------------------------------------------
+1W major structure: price is bearish of the weekly POC (2.278525).
+4H ATR TIMING [FLAT]: ATR is flat -- rotation environment (Mode 2), not a breakout trigger.
+No 4H breakdown below 1D resistance (1.417335) in the lookback window.
+-------------------------------------------------
+SETUP: NO TRADE -- no qualifying structure setup right now.
+-------------------------------------------------
+
+-------------------------------------------------
+              SETUP GRADE (advisory)             
+-------------------------------------------------
+No qualifying structural setup (1W/1D/4H/1H) -- A+ grading not applicable.
+-------------------------------------------------
+No Trade
+-------------------------------------------------
+
+---------------------------------------------------------------------------------
+           MULTI-TIMEFRAME STRUCTURE / VP SUMMARY -- XRP/USD (advisory)          
+---------------------------------------------------------------------------------
+TF   SWING          BOS            LEVEL     VP ACCEPTANCE  POC  RESULT  
+1w   LL/LL/LL/HH    NONE           --        --             →    NONE    
+1d   HH/LL/HH/HL    NONE           --        --             →    NONE    
+4h   LH/LL/HH/HL    NONE           --        --             ↑    NONE    
+1h   LL/HH/LL/LH    NONE           --        --             →    NONE    
+---------------------------------------------------------------------------------
+VP-BOS CONFIRMED: 0/4  (bull 0, bear 0)  ->  DIRECTION: NONE (insufficient VP-BOS agreement)
+BOS-PENDING:      0/4
+BOS-FAILED:       0/4
+Raw flags below the 0.25x ATR break margin:
+  1H: raw bearish flag: closed 0.0008 below 1.4887, needs 0.25x ATR (0.004201) -- not a BOS
+Closed bars only. Informational -- not used by the confluence/execution gate.
+---------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------
+             AVP BULLISH REJECTION -- XRP/USD (paper / advisory only)            
+---------------------------------------------------------------------------------
+4H AVP (anchored at decline start):  POC 1.49883  VAH 1.55894  VAL 1.48166
+    Setup: FAILED at POC 1.49883
+    Reclaimed AVP POC 1.49883, then closed back below it (1.4879) -- not accepted.
+1H AVP (anchored at decline start):  POC 1.49872  VAH 1.51643  VAL 1.4881
+    Setup: FAILED at POC 1.49872
+    Reclaimed AVP POC 1.49872, then closed back below it (1.4951) -- not accepted.
+---------------------------------------------------------------------------------
+Closed candles only. PAPER/ANALYSIS -- never overrides cdcx NO TRADE or the execution gate.
+---------------------------------------------------------------------------------
