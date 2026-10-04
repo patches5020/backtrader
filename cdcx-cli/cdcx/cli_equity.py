@@ -96,11 +96,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--symbol", required=True, help="e.g. SPCX, AAPL, SPY -- stocks/ETFs only, see warning above")
     parser.add_argument(
         "--timeframe", default="1h",
-        help="single timeframe: 1h, 4h, 1d, or 1w (default: 1h). Ignored if --timeframes is given.",
+        help="single timeframe: 1m, 5m, 10m, 15m, 30m, 45m, 1h, 4h, 1d or 1w (default: 1h). Robinhood: "
+             "5m/10m native, 15m/30m/45m built from them, ~1 week of intraday history, no 1m. Webull: "
+             "1m/5m/15m/30m native, 10m/45m built. Ignored if --timeframes is given.",
     )
     parser.add_argument(
         "--timeframes", default=None,
-        help="comma-separated list, e.g. 1h,4h,1d,1w -- prints a report for each plus a summary table.",
+        help="comma-separated list, e.g. 1h,4h,1d,1w or 5m,15m,45m,1h -- prints a report for each plus a "
+             "summary table. Timeframes below 1h are analysed and shown (incl. the advisory sections), but "
+             "only 1h/4h/1d/1w count toward confluence and --execute.",
     )
     parser.add_argument("--limit", type=int, default=settings.default_limit, help="number of bars to fetch")
     parser.add_argument(
@@ -427,6 +431,32 @@ def _handle_execute_confluence(
     return 0
 
 
+def _print_range_preview(results: dict[str, object], raw_data_by_tf: dict[str, object]) -> None:
+    """Read-only RANGING STRATEGY SETUP (same check as cdcx-ai's range mode) for every
+    requested timeframe that is ranging, from the bars already fetched -- no extra
+    requests. cdcx-equity's --execute has no range mode, so this is advisory only:
+    no journal entry, no paper trade."""
+    from . import ranging_strategy
+    from .cli import _range_inputs_from_data
+
+    for tf, signal in results.items():
+        if signal is None or signal.regime.regime != "ranging" or tf not in raw_data_by_tf:
+            continue
+        try:
+            _, _, _, rsi_series, vp_result, pattern_matches = _range_inputs_from_data(raw_data_by_tf[tf])
+        except Exception as exc:
+            print(f"(range setup preview for {tf} unavailable: {exc})", file=sys.stderr)
+            continue
+        setup = ranging_strategy.evaluate_ranging_setup(
+            price=signal.entry, rsi_series=rsi_series, poc=vp_result.poc,
+            vah=vp_result.vah, val=vp_result.val, pattern_matches=pattern_matches,
+        )
+        print()
+        print(f"RANGE MODE PREVIEW ({tf.upper()}, read-only, advisory -- cdcx-equity --execute has no range mode). "
+              "No journal entry, no paper trade.")
+        print(ranging_strategy.format_ranging_setup(setup))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -460,17 +490,23 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(mtf_context.format_atr_alignment(mtf_context.build_atr_alignment(results)))
         print(mtf_context.format_vp_hierarchy(mtf_context.build_vp_hierarchy(results)))
+        if not args.execute:
+            _print_range_preview(results, raw_data_by_tf)
         if args.structure_report and raw_data_by_tf:
+            lower = [tf for tf in mtf_context.lower_timeframes(timeframes) if tf in raw_data_by_tf]
             # Advisory-only VP-BOS (vp_bos.py) -- same section as cdcx-ai's
-            # --structure, from the series already fetched above.
+            # --structure, from the series already fetched above. Requested lower
+            # timeframes are extra rows that the 2-of-4 count never includes.
             from . import vp_bos
+            vp_tfs = [*vp_bos.TIMEFRAMES, *lower]
             print()
-            print(vp_bos.format_vp_bos_section(args.symbol, vp_bos.build_vp_bos_by_tf(raw_data_by_tf)))
-            # Paper/analysis-only AVP Bullish Rejection (avp_rejection.py) on 4H/1H.
+            print(vp_bos.format_vp_bos_section(args.symbol, vp_bos.build_vp_bos_by_tf(raw_data_by_tf, timeframes=vp_tfs)))
+            # Paper/analysis-only AVP Bullish Rejection (avp_rejection.py) on 4H/1H (+ lower timeframes).
             from . import avp_rejection
+            avp_tfs = [*avp_rejection.TIMEFRAMES, *lower]
             print()
             print(avp_rejection.format_avp_section(
-                args.symbol, avp_rejection.build_avp_by_tf(args.symbol, raw_data_by_tf)))
+                args.symbol, avp_rejection.build_avp_by_tf(args.symbol, raw_data_by_tf, timeframes=avp_tfs)))
 
         if not any_success:
             return 1

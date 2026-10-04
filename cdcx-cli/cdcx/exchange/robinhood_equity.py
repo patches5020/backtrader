@@ -27,6 +27,13 @@ at the week of Sep 14 while the daily series already held all of Sep
 daily-built bars matched open/high/low/close/volume exactly, with the
 same Monday stamp.
 
+Intraday below 1h: Robinhood serves 5minute and 10minute bars (span "week" at
+most, so ~1 week of history -- about 390 5m / 195 10m bars). 15m and 45m are
+built from 5m, 30m from 10m, anchored to each session's open (see
+equity_bars.py). 1m isn't available from Robinhood (use --source webull).
+With ~1 week of history, 30m/45m have only ~65/~45 bars -- indicators that
+need longer lookbacks may report less or fail for those timeframes.
+
 WARNING -- crypto-shorthand ticker collisions: this module only calls
 `get_stock_historicals()`, Robinhood's stocks/ETFs endpoint -- there is no
 crypto code path here at all. If you pass a crypto shorthand like "XRP",
@@ -48,16 +55,25 @@ import os
 from datetime import datetime, timezone
 
 from .cryptocom import OHLCV
+from .equity_bars import aggregate_session_minutes
 
 # timeframe (cdcx's own strings, e.g. "1h") -> (robin_stocks interval, span).
 # span is chosen generously so `limit` bars are almost always available;
 # fetch_ohlcv slices to the last `limit` afterward.
 _TIMEFRAME_MAP = {
+    "5m": ("5minute", "week"),
+    "10m": ("10minute", "week"),
+    "15m": ("5minute", "week"),   # built from 5m (x3), session-anchored -- see module docstring
+    "30m": ("10minute", "week"),  # built from 10m (x3)
+    "45m": ("5minute", "week"),   # built from 5m (x9)
     "1h": ("hour", "3month"),
     "4h": ("hour", "3month"),  # aggregated 4x below -- see module docstring
     "1d": ("day", "5year"),
     "1w": ("day", "5year"),  # grouped into calendar weeks below -- see module docstring
 }
+
+
+_BUILT_INTRADAY_MINUTES = {"15m": 15, "30m": 30, "45m": 45}
 
 
 class RobinhoodAuthError(RuntimeError):
@@ -106,6 +122,8 @@ class RobinhoodEquityExchange:
             data = _aggregate(data, factor=4)
         elif timeframe == "1w":
             data = _aggregate_weekly(data)
+        elif timeframe in _BUILT_INTRADAY_MINUTES:
+            data = aggregate_session_minutes(data, _BUILT_INTRADAY_MINUTES[timeframe])
 
         data = _tail(data, limit)
         data.market = "us_equity"  # weekly bars close Friday 16:00 ET -- see no_trade_gate.bar_close_time

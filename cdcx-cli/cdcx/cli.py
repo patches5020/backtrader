@@ -661,10 +661,15 @@ def _range_setup_inputs(symbol: str, range_tf: str, limit: int):
     """Inputs for ranging_strategy.evaluate_ranging_setup on `range_tf` -- shared by
     --execute and the read-only preview, so the two can never evaluate different data."""
     from .exchange.cryptocom import CryptoComExchange
-    from .indicators import atr_ema_variant1, adx as adx_module, rsi as rsi_module, volume_profile_fixed
 
     exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
-    raw_data = exchange.fetch_ohlcv(symbol, timeframe=range_tf, limit=limit)
+    return _range_inputs_from_data(exchange.fetch_ohlcv(symbol, timeframe=range_tf, limit=limit))
+
+
+def _range_inputs_from_data(raw_data):
+    """The range-setup inputs computed from already-fetched OHLCV (also used by cdcx-equity)."""
+    from .indicators import atr_ema_variant1, adx as adx_module, rsi as rsi_module, volume_profile_fixed
+
     atr_series = atr_ema_variant1.calculate_atr(raw_data.highs, raw_data.lows, raw_data.closes)
     adx_series, _, _ = adx_module.calculate_adx(raw_data.highs, raw_data.lows, raw_data.closes)
     rsi_series = rsi_module.calculate_rsi(raw_data.closes)

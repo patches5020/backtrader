@@ -42,16 +42,25 @@ import os
 from datetime import datetime, timezone
 
 from .cryptocom import OHLCV
+from .equity_bars import aggregate_session_minutes
 
 # timeframe (cdcx's own strings) -> webull.data.common.timespan.Timespan.
 # Webull has a real 240-minute (4h) bar -- unlike Robinhood, no aggregation
 # needed here.
 _TIMEFRAME_TO_TIMESPAN_NAME = {
+    "1m": "M1",
+    "5m": "M5",
+    "15m": "M15",
+    "30m": "M30",
     "1h": "M60",
     "4h": "M240",
     "1d": "D",
     "1w": "W",
 }
+
+# Sizes Webull doesn't serve, built from a native one, session-anchored (equity_bars.py):
+# timeframe -> (native timeframe, minutes per built bar, native bars per built bar)
+_BUILT_INTRADAY = {"10m": ("5m", 10, 2), "45m": ("15m", 45, 3)}
 
 # Plausible field-name spellings for each OHLCV component, tried in order.
 # See module docstring: this is the one part of this adapter not verified
@@ -120,6 +129,16 @@ class WebullEquityExchange:
         self._data_client = DataClient(api_client)
 
     def fetch_ohlcv(self, symbol: str, timeframe: str = "1h", limit: int = 200) -> OHLCV:
+        if timeframe in _BUILT_INTRADAY:
+            base_tf, minutes, factor = _BUILT_INTRADAY[timeframe]
+            base = self.fetch_ohlcv(symbol, timeframe=base_tf, limit=limit * factor + factor)
+            data = aggregate_session_minutes(base, minutes)
+            n = len(data.closes)
+            data = OHLCV(timestamps=data.timestamps[max(0, n - limit):], opens=data.opens[max(0, n - limit):],
+                         highs=data.highs[max(0, n - limit):], lows=data.lows[max(0, n - limit):],
+                         closes=data.closes[max(0, n - limit):], volumes=data.volumes[max(0, n - limit):])
+            data.market = "us_equity"
+            return data
         if timeframe not in _TIMEFRAME_TO_TIMESPAN_NAME:
             raise ValueError(
                 f"Unsupported timeframe '{timeframe}' for Webull -- supported: "
