@@ -58,15 +58,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--symbol", default=settings.default_symbol, help="e.g. BTC/USDT")
     parser.add_argument(
         "--timeframe", default=None,
-        help=f"single timeframe, e.g. 1h, 4h, 1d (default: {settings.default_timeframe}). "
-             "Ignored if --timeframes is given.",
+        help=f"single timeframe, e.g. 1m, 5m, 10m, 15m, 30m, 45m, 1h, 4h, 1d (default: {settings.default_timeframe}). "
+             "10m and 45m are built from Crypto.com 5m/15m candles. Ignored if --timeframes is given.",
     )
     parser.add_argument(
         "--timeframes", default=None,
         help="comma-separated list of timeframes to run in one command, "
-             "e.g. 1h,4h,1d,1w -- prints a report for each plus a combined summary. "
-             "Trending --execute needs 2+ tradeable timeframes; range mode can execute "
-             "from the fastest available ranging timeframe without trend confluence.",
+             "e.g. 1h,4h,1d,1w or 5m,15m,45m,1h -- prints a report for each plus a combined summary. "
+             "Timeframes below 1h (1m-45m) are analysed and shown, but only 1h/4h/1d/1w count toward "
+             "confluence and --execute. Trending --execute needs 2+ tradeable timeframes; range mode "
+             "can execute from the fastest available ranging timeframe without trend confluence.",
     )
     parser.add_argument("--limit", type=int, default=settings.default_limit, help="number of candles to fetch")
 

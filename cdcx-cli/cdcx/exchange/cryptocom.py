@@ -9,7 +9,7 @@ for future authenticated features (balances, order placement, etc.).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Optional, Sequence
 
 
 @dataclass
@@ -69,12 +69,36 @@ class CryptoComExchange:
         allows in one request.
         """
         symbol = self._resolve_market_symbol(symbol)
-        if limit <= self.MAX_CANDLES_PER_CALL:
-            raw: Sequence[Sequence[float]] = self._exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-        else:
-            raw = self._fetch_ohlcv_paginated(symbol, timeframe, limit)
+        base = self._synthetic_base(timeframe)
+        if base is not None:
+            # Crypto.com has no candle at this size (e.g. 10m, 45m): build it from the largest
+            # native candle that divides it evenly -- see _resample.
+            base_tf, factor = base
+            return self._to_ohlcv(_resample(self._fetch_raw(symbol, base_tf, limit * factor + factor), factor)[-limit:])
+        return self._to_ohlcv(self._fetch_raw(symbol, timeframe, limit))
 
-        return self._to_ohlcv(raw)
+    def _fetch_raw(self, symbol: str, timeframe: str, limit: int) -> Sequence[Sequence[float]]:
+        if limit <= self.MAX_CANDLES_PER_CALL:
+            return self._exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        return self._fetch_ohlcv_paginated(symbol, timeframe, limit)
+
+    def _synthetic_base(self, timeframe: str) -> Optional[tuple[str, int]]:
+        """None for a timeframe the exchange serves natively; otherwise (native timeframe,
+        how many of them make one candle) using the largest native size that divides it."""
+        native = getattr(self._exchange, "timeframes", None) or {}
+        if not native or timeframe in native:  # unknown size list -> fetch as-is, exactly as before
+            return None
+        if not timeframe or timeframe[-1] not in "mh":  # only intraday sizes (e.g. 10m, 45m) are built
+            raise ValueError(f"{timeframe} is not a Crypto.com candle size "
+                             f"(native: {', '.join(sorted(native))}; minute/hour sizes like 10m or 45m are built)")
+        target = int(self._exchange.parse_timeframe(timeframe))
+        divisors = [(int(self._exchange.parse_timeframe(tf)), tf) for tf in native
+                    if tf[-1] in "mh" and target % int(self._exchange.parse_timeframe(tf)) == 0]
+        if not divisors:
+            raise ValueError(f"{timeframe} is not a Crypto.com candle size and no native size divides it "
+                             f"(native: {', '.join(sorted(native))})")
+        seconds, base_tf = max(divisors)
+        return base_tf, target // seconds
 
     def _fetch_ohlcv_paginated(
         self, symbol: str, timeframe: str, limit: int,
@@ -244,6 +268,33 @@ class CryptoComExchange:
         product_type = market.get("info", {}).get("product_type")
         return product_type is not None and product_type != "DIGITAL_CURRENCIES"
 
+
+
+def _resample(rows: Sequence[Sequence[float]], factor: int) -> list[list[float]]:
+    """Merge `factor` consecutive native candles into one, grouped on boundaries aligned
+    to the unix epoch (= UTC midnight for any size that divides a day, e.g. 10m, 45m),
+    the same boundaries TradingView uses for crypto. open = first open, high = max,
+    low = min, close = last close, volume = sum; timestamp = the group's start.
+    The oldest group is dropped if it is missing bars (the fetch started mid-group);
+    the newest group is kept even if partial -- it is the forming candle, exactly like
+    the last native candle."""
+    if not rows:
+        return []
+    step = int(rows[1][0] - rows[0][0]) if len(rows) > 1 else 0
+    span = step * factor
+    if span <= 0:
+        return [list(r) for r in rows]
+    groups: dict[int, list[Sequence[float]]] = {}
+    for r in sorted(rows, key=lambda r: r[0]):
+        groups.setdefault(int(r[0]) // span * span, []).append(r)
+    keys = sorted(groups)
+    if keys and len(groups[keys[0]]) < factor:
+        keys = keys[1:]
+    out = []
+    for k in keys:
+        g = groups[k]
+        out.append([k, g[0][1], max(r[2] for r in g), min(r[3] for r in g), g[-1][4], sum(r[5] for r in g)])
+    return out
 
 if __name__ == "__main__":
     exchange = CryptoComExchange()
