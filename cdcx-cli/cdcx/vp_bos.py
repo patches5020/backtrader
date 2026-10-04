@@ -277,6 +277,9 @@ def format_vp_bos_section(symbol: str, by_tf: dict[str, VpBos]) -> str:
     if notes:
         lines.append("Raw flags below the 0.25x ATR break margin:")
         lines.extend(notes)
+    if any(r.signal == "BOS-PENDING" for r in rows):
+        lines.append("PENDING = the swing broke (closed past it by 0.25x ATR) but the volume profile hasn't accepted it")
+        lines.append("  yet, so that timeframe's own BOS STATE can show a break that isn't counted as VP-BOS here.")
     lines.append("Closed bars only. Informational -- not used by the confluence/execution gate.")
     lines.append(bar)
     return "\n".join(lines)

@@ -604,6 +604,52 @@ def _print_summary_table(symbol: str, results: dict[str, object]) -> None:
     print(bar)
 
 
+def _range_entry_timeframe(results: dict[str, object]) -> str | None:
+    """The timeframe the range-boundary strategy evaluates: the fastest available of
+    1h/4h/1d/1w, and only if that one is ranging (same rule --execute uses)."""
+    available_tfs = [tf for tf in ["1h", "4h", "1d", "1w"] if results.get(tf) is not None]
+    if available_tfs and results[available_tfs[0]].regime.regime == "ranging":
+        return available_tfs[0]
+    return None
+
+
+def _range_setup_inputs(symbol: str, range_tf: str, limit: int):
+    """Inputs for ranging_strategy.evaluate_ranging_setup on `range_tf` -- shared by
+    --execute and the read-only preview, so the two can never evaluate different data."""
+    from .exchange.cryptocom import CryptoComExchange
+    from .indicators import atr_ema_variant1, adx as adx_module, rsi as rsi_module, volume_profile_fixed
+
+    exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
+    raw_data = exchange.fetch_ohlcv(symbol, timeframe=range_tf, limit=limit)
+    atr_series = atr_ema_variant1.calculate_atr(raw_data.highs, raw_data.lows, raw_data.closes)
+    adx_series, _, _ = adx_module.calculate_adx(raw_data.highs, raw_data.lows, raw_data.closes)
+    rsi_series = rsi_module.calculate_rsi(raw_data.closes)
+    vp_result = volume_profile_fixed.analyze(raw_data.highs, raw_data.lows, raw_data.volumes, price=raw_data.closes[-1])
+    pattern_matches = candlestick_patterns.detect_patterns(raw_data.highs, raw_data.lows, raw_data.opens, raw_data.closes)
+    return raw_data, atr_series, adx_series, rsi_series, vp_result, pattern_matches
+
+
+def _print_range_setup_preview(symbol: str, results: dict[str, object], limit: int) -> None:
+    """Read-only: the RANGING STRATEGY SETUP that --execute would evaluate, without
+    --execute. Writes no journal entry, sizes nothing, opens no paper trade."""
+    range_tf = _range_entry_timeframe(results)
+    if range_tf is None:
+        return
+    try:
+        _, _, _, rsi_series, vp_result, pattern_matches = _range_setup_inputs(symbol, range_tf, limit)
+    except Exception as exc:
+        print(f"(range setup preview unavailable: {exc})", file=sys.stderr)
+        return
+    setup = ranging_strategy.evaluate_ranging_setup(
+        price=results[range_tf].entry, rsi_series=rsi_series, poc=vp_result.poc,
+        vah=vp_result.vah, val=vp_result.val, pattern_matches=pattern_matches,
+    )
+    print()
+    print(f"RANGE MODE PREVIEW ({range_tf.upper()}, read-only): the range-boundary check --execute would run. "
+          "No journal entry, no paper trade.")
+    print(ranging_strategy.format_ranging_setup(setup))
+
+
 def _handle_execute(
     symbol: str, balance: float, risk_pct: float, results: dict[str, object], limit: int,
     live: bool = False, instrument_name_override: str = None, news_imminent: bool = False,
@@ -625,50 +671,39 @@ def _handle_execute(
     # Range mode is intentionally independent of multi-timeframe trend
     # confluence. If the fastest available execution timeframe is already a
     # validated range, evaluate the dedicated range-boundary setup directly.
-    allowed = ["1h", "4h", "1d", "1w"]
-    available_tfs = [tf for tf in allowed if results.get(tf) is not None]
-    if available_tfs:
-        range_tf = available_tfs[0]
+    range_tf = _range_entry_timeframe(results)
+    if range_tf is not None:
         range_signal = results[range_tf]
-        if range_signal.regime.regime == "ranging":
-            from .exchange.cryptocom import CryptoComExchange
-            from .indicators import atr_ema_variant1, adx as adx_module, rsi as rsi_module, volume_profile_fixed
+        journal.write_signal(symbol, range_tf, range_signal)
+        account_balance = balance if balance is not None else settings.default_account_balance
+        effective_risk_pct = risk_pct if risk_pct is not None else settings.risk_pct_per_trade
+        raw_data, atr_series, adx_series, rsi_series, vp_result, pattern_matches = _range_setup_inputs(
+            symbol, range_tf, limit)
+        print()
+        print("RANGE MODE: multi-timeframe trend confluence is not required.")
 
-            journal.write_signal(symbol, range_tf, range_signal)
-            account_balance = balance if balance is not None else settings.default_account_balance
-            effective_risk_pct = risk_pct if risk_pct is not None else settings.risk_pct_per_trade
-            exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
-            raw_data = exchange.fetch_ohlcv(symbol, timeframe=range_tf, limit=limit)
-            atr_series = atr_ema_variant1.calculate_atr(raw_data.highs, raw_data.lows, raw_data.closes)
-            adx_series, _, _ = adx_module.calculate_adx(raw_data.highs, raw_data.lows, raw_data.closes)
-            rsi_series = rsi_module.calculate_rsi(raw_data.closes)
-            vp_result = volume_profile_fixed.analyze(raw_data.highs, raw_data.lows, raw_data.volumes, price=raw_data.closes[-1])
-            pattern_matches = candlestick_patterns.detect_patterns(raw_data.highs, raw_data.lows, raw_data.opens, raw_data.closes)
-            print()
-            print("RANGE MODE: multi-timeframe trend confluence is not required.")
-
-            # --- FVP shadow analysis (Phase 1, research only) -------------
-            # Same scope statement as the confluence-path hook below:
-            # INFORMATION ONLY, never consulted by the ranging setup logic.
-            try:
-                from .volume_profile.fvp_analysis import build_fvp_shadow_report, format_fvp_shadow
-                fvp_report = build_fvp_shadow_report(
-                    raw_data.highs, raw_data.lows, raw_data.closes, raw_data.volumes,
-                    price=raw_data.closes[-1], timeframe=range_tf,
-                )
-                print()
-                print(format_fvp_shadow(fvp_report))
-            except Exception as exc:
-                print(f"\n[FVP shadow analysis skipped: {exc}]", file=sys.stderr)
-
-            return _handle_ranging_path(
-                symbol, range_signal, account_balance, effective_risk_pct,
-                rsi_series, vp_result, pattern_matches, atr_series, adx_series[-1], news_imminent,
-                live, instrument_name_override,
-                max_consecutive_losses=max_consecutive_losses, max_drawdown_pct=max_drawdown_pct,
-                atr_multiplier_override=atr_multiplier_override, tp_close_pcts_override=tp_close_pcts_override,
-                confirmed_no_withdraw_permission=confirmed_no_withdraw_permission,
+        # --- FVP shadow analysis (Phase 1, research only) -------------
+        # Same scope statement as the confluence-path hook below:
+        # INFORMATION ONLY, never consulted by the ranging setup logic.
+        try:
+            from .volume_profile.fvp_analysis import build_fvp_shadow_report, format_fvp_shadow
+            fvp_report = build_fvp_shadow_report(
+                raw_data.highs, raw_data.lows, raw_data.closes, raw_data.volumes,
+                price=raw_data.closes[-1], timeframe=range_tf,
             )
+            print()
+            print(format_fvp_shadow(fvp_report))
+        except Exception as exc:
+            print(f"\n[FVP shadow analysis skipped: {exc}]", file=sys.stderr)
+
+        return _handle_ranging_path(
+            symbol, range_signal, account_balance, effective_risk_pct,
+            rsi_series, vp_result, pattern_matches, atr_series, adx_series[-1], news_imminent,
+            live, instrument_name_override,
+            max_consecutive_losses=max_consecutive_losses, max_drawdown_pct=max_drawdown_pct,
+            atr_multiplier_override=atr_multiplier_override, tp_close_pcts_override=tp_close_pcts_override,
+            confirmed_no_withdraw_permission=confirmed_no_withdraw_permission,
+        )
 
     if len(signals_by_tf) < 2:
         reason = (
@@ -1409,6 +1444,7 @@ def main(argv: list[str] | None = None) -> int:
                 tp_ratios_override=args.tp_ratios, tp_close_pcts_override=args.tp_close_pcts,
             )
         else:
+            _print_range_setup_preview(args.symbol, results, args.limit)
             result = 0 if any_success else 1
 
         # Final combined LONG/SHORT trigger evaluation across all four roles,
