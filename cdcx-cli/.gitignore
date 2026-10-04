@@ -7,3 +7,6 @@ cdcx_trades.json
 trading/
 backups/
 data/
+
+# separate git clone of tradesdontlie/tradingview-mcp (has its own repo)
+tradingview-mcp/
