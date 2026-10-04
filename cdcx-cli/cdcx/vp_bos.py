@@ -248,7 +248,12 @@ def format_vp_bos_section(symbol: str, by_tf: dict[str, VpBos]) -> str:
         f"{'TF':<5}{'SWING':<15}{'BOS':<15}{'LEVEL':<10}{'VP ACCEPTANCE':<15}{'POC':<5}{'RESULT':<8}",
     ]
     notes = []
-    for tf, r in by_tf.items():
+    core_tfs = [tf for tf in by_tf if tf in TIMEFRAMES]
+    lower_tfs = [tf for tf in by_tf if tf not in TIMEFRAMES]
+    for tf in core_tfs + lower_tfs:
+        r = by_tf[tf]
+        if tf == (lower_tfs[0] if lower_tfs else None):
+            lines.append(f"{'-- lower timeframes (advisory, not counted below) --':^{width}}")
         if r is None:
             lines.append(f"{tf:<5}{'--':<15}{'ERROR':<15}{'--':<10}{'--':<15}{'--':<5}{'--':<8}")
             continue
@@ -260,8 +265,8 @@ def format_vp_bos_section(symbol: str, by_tf: dict[str, VpBos]) -> str:
         if r.raw_note:
             notes.append(f"  {tf.upper()}: {r.raw_note} -- not a BOS")
 
-    rows = [r for r in by_tf.values() if r is not None]
-    n = len(by_tf)
+    rows = [by_tf[tf] for tf in core_tfs if by_tf[tf] is not None]  # the protected 1W/1D/4H/1H count only
+    n = len(core_tfs)
     bull = sum(1 for r in rows if r.signal == "VP-BOS-BULL")
     bear = sum(1 for r in rows if r.signal == "VP-BOS-BEAR")
     if bull >= 2 and bull > bear:
@@ -274,10 +279,17 @@ def format_vp_bos_section(symbol: str, by_tf: dict[str, VpBos]) -> str:
     lines.append(f"VP-BOS CONFIRMED: {bull + bear}/{n}  (bull {bull}, bear {bear})  ->  DIRECTION: {direction}")
     lines.append(f"BOS-PENDING:      {sum(1 for r in rows if r.signal == 'BOS-PENDING')}/{n}")
     lines.append(f"BOS-FAILED:       {sum(1 for r in rows if r.signal == 'BOS-FAILED')}/{n}")
+    lower_rows = [by_tf[tf] for tf in lower_tfs if by_tf[tf] is not None]
+    if lower_tfs:
+        lb = sum(1 for r in lower_rows if r.signal == "VP-BOS-BULL")
+        lr = sum(1 for r in lower_rows if r.signal == "VP-BOS-BEAR")
+        lp = sum(1 for r in lower_rows if r.signal == "BOS-PENDING")
+        lines.append(f"LOWER TF VP-BOS:  {lb + lr}/{len(lower_tfs)} confirmed (bull {lb}, bear {lr}), "
+                     f"{lp} pending  ({', '.join(t.upper() for t in lower_tfs)}; context only)")
     if notes:
         lines.append("Raw flags below the 0.25x ATR break margin:")
         lines.extend(notes)
-    if any(r.signal == "BOS-PENDING" for r in rows):
+    if any(r.signal == "BOS-PENDING" for r in rows + lower_rows):
         lines.append("PENDING = the swing broke (closed past it by 0.25x ATR) but the volume profile hasn't accepted it")
         lines.append("  yet, so that timeframe's own BOS STATE can show a break that isn't counted as VP-BOS here.")
     lines.append("Closed bars only. Informational -- not used by the confluence/execution gate.")
@@ -285,11 +297,14 @@ def format_vp_bos_section(symbol: str, by_tf: dict[str, VpBos]) -> str:
     return "\n".join(lines)
 
 
-def build_vp_bos_by_tf(data_by_tf: dict, now: Optional[float] = None) -> dict[str, Optional[VpBos]]:
+def build_vp_bos_by_tf(data_by_tf: dict, now: Optional[float] = None,
+                       timeframes: Optional[Sequence[str]] = None) -> dict[str, Optional[VpBos]]:
     """`data_by_tf`: {tf: OHLCV}. Best-effort per timeframe -- one bad
-    series becomes an ERROR row, never an exception out of the report."""
+    series becomes an ERROR row, never an exception out of the report.
+    `timeframes` defaults to the four TIMEFRAMES; extra (lower) ones are
+    reported as advisory rows that format_vp_bos_section never counts."""
     out: dict[str, Optional[VpBos]] = {}
-    for tf in TIMEFRAMES:
+    for tf in (timeframes or TIMEFRAMES):
         data = data_by_tf.get(tf)
         if data is None:
             continue

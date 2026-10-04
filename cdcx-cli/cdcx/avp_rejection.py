@@ -274,9 +274,11 @@ def format_avp_section(symbol: str, by_tf: dict[str, Optional[AvpRejection]]) ->
     return "\n".join(lines)
 
 
-def build_avp_by_tf(symbol: str, data_by_tf: dict, now: Optional[float] = None) -> dict[str, Optional[AvpRejection]]:
+def build_avp_by_tf(symbol: str, data_by_tf: dict, now: Optional[float] = None,
+                    timeframes: Optional[Sequence[str]] = None) -> dict[str, Optional[AvpRejection]]:
+    """`timeframes` defaults to 4H/1H; lower ones (e.g. 45m, 15m) can be added -- still paper/advisory."""
     out: dict[str, Optional[AvpRejection]] = {}
-    for tf in TIMEFRAMES:
+    for tf in (timeframes or TIMEFRAMES):
         data = data_by_tf.get(tf)
         if data is None:
             continue

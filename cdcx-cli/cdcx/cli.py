@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import Sequence
 
 from . import risk
 from . import trade_manager
@@ -354,7 +355,9 @@ def _print_merged_structure_block(symbol: str, timeframe: str, limit: int, cache
     hitting the exchange again for the same timeframe."""
     role = _STRUCTURE_ROLES.get(timeframe)
     if role is None:
-        return
+        if timeframe not in mtf_context.lower_timeframes([timeframe]):
+            return
+        role = "lower timeframe, advisory"  # same block; never part of the 1W/1D/4H/1H trigger
 
     smap, data = _fetch_structure_map(symbol, timeframe, limit)
     if smap is None:
@@ -396,14 +399,40 @@ def _print_structure_report(symbol: str, timeframe: str, limit: int, cache: dict
     print(format_structure_report(report))
 
 
-def _print_structure_setup_section(symbol: str, limit: int, cache: dict) -> bool:
+def _lower_structure_context(symbol: str, limit: int, cache: dict, lower: list[str]) -> list[str]:
+    """Advisory lines for requested lower timeframes: structure levels + ATR timing,
+    the same reads the 1W/1D/4H/1H setup uses -- context only, never a trigger."""
+    from .indicators import atr_state as atr_state_module
+
+    lines = []
+    for tf in lower:
+        if tf not in cache:
+            smap, data = _fetch_structure_map(symbol, tf, limit)
+            if smap is None:
+                continue
+            cache[tf] = (smap, data)
+        smap, data = cache[tf]
+        lines.append(f"{tf.upper()}: {smap.condition.upper()}  POC {smap.poc:.6g}  "
+                     f"support {smap.support:.6g} / resistance {smap.resistance:.6g}  "
+                     f"price {data.closes[-1]:.6g}")
+        try:
+            transition = atr_state_module.analyze(data.highs, data.lows, data.closes)
+            lines.append("    " + atr_state_module.format_atr_transition(transition, label=f"{tf.upper()} ATR TIMING"))
+        except Exception as exc:
+            lines.append(f"    {tf.upper()} ATR TIMING unavailable: {exc}")
+    return lines
+
+
+def _print_structure_setup_section(symbol: str, limit: int, cache: dict, timeframes: Sequence[str] = ()) -> bool:
     """Print the combined 1W/1D/4H/1H LONG/SHORT trigger evaluation, reusing
     whatever per-timeframe structure data the report loop already fetched
     (via `_print_merged_structure_block`) and only fetching what's still
     missing -- e.g. when --structure is used with a --timeframe/--timeframes
     set that doesn't already cover all four roles. Returns True on success,
     False (after printing the error) if any required timeframe couldn't be
-    fetched."""
+    fetched. Requested lower timeframes (`timeframes` below 1h) get advisory
+    context lines and VP-BOS / AVP rows; the 1W/1D/4H/1H trigger, its grade
+    and the VP-BOS 2-of-4 count are unchanged."""
     for tf in ("1w", "1d", "4h", "1h"):
         if tf not in cache:
             smap, data = _fetch_structure_map(symbol, tf, limit)
@@ -423,6 +452,14 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict) -> bool
     )
     print()
     print(structure_strategy.format_structure_setup(setup))
+    lower = mtf_context.lower_timeframes(timeframes)
+    if lower:
+        context = _lower_structure_context(symbol, limit, cache, lower)
+        if context:
+            print("LOWER TIMEFRAMES (advisory context -- not part of the 1W/1D/4H/1H trigger above):")
+            for line in context:
+                print(f"  {line}")
+            print("-" * 49)
 
     # Advisory-only A+ grade (setup_grade.py) -- labels setup quality for
     # this printed report; never consulted by no_trade_gate.py. Best-effort:
@@ -435,6 +472,9 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict) -> bool
         atr_transition = atr_state_module.analyze(h4_data.highs, h4_data.lows, h4_data.closes)
         print()
         print(setup_grade_module.format_setup_grade(setup_grade_module.grade_setup(setup, atr_transition)))
+        if lower:
+            print(f"(Lower timeframes {', '.join(t.upper() for t in lower)} aren't graded: the A+ grade rates the "
+                  "1W/1D/4H/1H structural setup. See their context lines above.)")
     except Exception as exc:
         print(f"(setup grade unavailable: {exc})", file=sys.stderr)
 
@@ -442,14 +482,17 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict) -> bool
     # acceptance, from the same four cached series. Never read by the gate.
     from . import vp_bos
     print()
-    print(vp_bos.format_vp_bos_section(symbol, vp_bos.build_vp_bos_by_tf({tf: cache[tf][1] for tf in vp_bos.TIMEFRAMES})))
+    vp_tfs = [*vp_bos.TIMEFRAMES, *[tf for tf in lower if tf in cache]]
+    print(vp_bos.format_vp_bos_section(symbol, vp_bos.build_vp_bos_by_tf(
+        {tf: cache[tf][1] for tf in vp_tfs}, timeframes=vp_tfs)))
 
     # Paper/analysis-only AVP Bullish Rejection (avp_rejection.py) on 4H/1H.
     # Never read by the gate and never overrides NO TRADE.
     from . import avp_rejection
     print()
+    avp_tfs = [*avp_rejection.TIMEFRAMES, *[tf for tf in lower if tf in cache]]
     print(avp_rejection.format_avp_section(
-        symbol, avp_rejection.build_avp_by_tf(symbol, {tf: cache[tf][1] for tf in avp_rejection.TIMEFRAMES})))
+        symbol, avp_rejection.build_avp_by_tf(symbol, {tf: cache[tf][1] for tf in avp_tfs}, timeframes=avp_tfs)))
 
     return True
 
@@ -632,23 +675,27 @@ def _range_setup_inputs(symbol: str, range_tf: str, limit: int):
 
 def _print_range_setup_preview(symbol: str, results: dict[str, object], limit: int) -> None:
     """Read-only: the RANGING STRATEGY SETUP that --execute would evaluate, without
-    --execute. Writes no journal entry, sizes nothing, opens no paper trade."""
+    --execute -- plus the same check on every requested lower timeframe that is
+    ranging (advisory; --execute never uses those). Writes no journal entry,
+    sizes nothing, opens no paper trade."""
     range_tf = _range_entry_timeframe(results)
-    if range_tf is None:
-        return
-    try:
-        _, _, _, rsi_series, vp_result, pattern_matches = _range_setup_inputs(symbol, range_tf, limit)
-    except Exception as exc:
-        print(f"(range setup preview unavailable: {exc})", file=sys.stderr)
-        return
-    setup = ranging_strategy.evaluate_ranging_setup(
-        price=results[range_tf].entry, rsi_series=rsi_series, poc=vp_result.poc,
-        vah=vp_result.vah, val=vp_result.val, pattern_matches=pattern_matches,
-    )
-    print()
-    print(f"RANGE MODE PREVIEW ({range_tf.upper()}, read-only): the range-boundary check --execute would run. "
-          "No journal entry, no paper trade.")
-    print(ranging_strategy.format_ranging_setup(setup))
+    previews = [(range_tf, "the range-boundary check --execute would run")] if range_tf else []
+    previews += [(tf, "lower timeframe, advisory -- --execute never uses it")
+                 for tf in mtf_context.lower_timeframes(results)
+                 if results.get(tf) is not None and results[tf].regime.regime == "ranging"]
+    for tf, what in previews:
+        try:
+            _, _, _, rsi_series, vp_result, pattern_matches = _range_setup_inputs(symbol, tf, limit)
+        except Exception as exc:
+            print(f"(range setup preview for {tf} unavailable: {exc})", file=sys.stderr)
+            continue
+        setup = ranging_strategy.evaluate_ranging_setup(
+            price=results[tf].entry, rsi_series=rsi_series, poc=vp_result.poc,
+            vah=vp_result.vah, val=vp_result.val, pattern_matches=pattern_matches,
+        )
+        print()
+        print(f"RANGE MODE PREVIEW ({tf.upper()}, read-only): {what}. No journal entry, no paper trade.")
+        print(ranging_strategy.format_ranging_setup(setup))
 
 
 def _handle_execute(
@@ -1400,7 +1447,7 @@ def main(argv: list[str] | None = None) -> int:
             structure_cache: dict = {}
             backtrader_timeframe = args.timeframe or settings.default_timeframe
             _print_merged_structure_block(args.symbol, backtrader_timeframe, args.limit, structure_cache)
-            _print_structure_setup_section(args.symbol, args.limit, structure_cache)
+            _print_structure_setup_section(args.symbol, args.limit, structure_cache, [backtrader_timeframe])
         return result
 
     from . import engine  # deferred: requires ccxt, not needed for the branches above
@@ -1451,7 +1498,7 @@ def main(argv: list[str] | None = None) -> int:
         # Final combined LONG/SHORT trigger evaluation across all four roles,
         # reusing whatever the per-timeframe blocks above already fetched.
         if args.structure:
-            _print_structure_setup_section(args.symbol, args.limit, structure_cache)
+            _print_structure_setup_section(args.symbol, args.limit, structure_cache, timeframes)
 
         return result
 
@@ -1483,7 +1530,7 @@ def main(argv: list[str] | None = None) -> int:
         result = 1
 
     if args.structure:
-        _print_structure_setup_section(args.symbol, args.limit, structure_cache)
+        _print_structure_setup_section(args.symbol, args.limit, structure_cache, [timeframe])
 
     return result
 

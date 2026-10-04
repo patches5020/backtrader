@@ -27,12 +27,18 @@ the entry checklist, or any entry/SL/TP/R:R/risk calculation:
    "Value Area Breakout (bearish)" (price still below the weekly VAL) --
    short-term strength with an unconfirmed higher-timeframe location, not a
    contradiction to alarm over.
+
+Lower timeframes (anything under 1h that was requested, e.g. 45m/15m/5m) are
+listed too, on their own lines marked "context only": they never change the
+x/4 ATR count, the four roles, or the macro-conflict note above.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Iterable, Optional
+
+from .no_trade_gate import timeframe_to_seconds
 
 TIMEFRAME_ORDER = ["1w", "1d", "4h", "1h"]  # macro -> entry, matches this codebase's existing hierarchy
 
@@ -51,6 +57,13 @@ VP_SETUP_LABELS = {
 }
 
 
+def lower_timeframes(timeframes: Iterable[str]) -> list[str]:
+    """Requested timeframes below 1h, slowest first (45m, 30m, 15m, 10m, 5m, 1m)."""
+    lower = [tf for tf in dict.fromkeys(timeframes) if tf not in TIMEFRAME_ORDER
+             and (timeframe_to_seconds(tf) or 0) and timeframe_to_seconds(tf) < 3600]
+    return sorted(lower, key=lambda tf: -timeframe_to_seconds(tf))
+
+
 def direction_word(direction: Optional[str]) -> str:
     if direction == "up":
         return "bullish"
@@ -64,6 +77,7 @@ class AtrAlignment:
     by_timeframe: dict = field(default_factory=dict)  # tf -> "Expansion" | "Flat" | "Contraction" | "n/a"
     expansion_count: int = 0
     total_count: int = 0
+    lower: dict = field(default_factory=dict)         # lower tf -> label; context only, NOT in the counts above
 
 
 @dataclass
@@ -78,6 +92,7 @@ class VpHierarchyEntry:
 class VpHierarchy:
     entries: list = field(default_factory=list)
     macro_conflict: Optional[str] = None  # set when the slowest and fastest directional readings disagree
+    lower_entries: list = field(default_factory=list)  # lower timeframes; context only, not in macro_conflict
 
 
 def build_atr_alignment(results: dict) -> AtrAlignment:
@@ -87,7 +102,10 @@ def build_atr_alignment(results: dict) -> AtrAlignment:
         by_timeframe[tf] = signal.labels.get("atr_expansion", "n/a") if signal is not None else "n/a"
     expansion_count = sum(1 for label in by_timeframe.values() if label == "Expansion")
     total_count = sum(1 for label in by_timeframe.values() if label != "n/a")
-    return AtrAlignment(by_timeframe=by_timeframe, expansion_count=expansion_count, total_count=total_count)
+    lower = {tf: results[tf].labels.get("atr_expansion", "n/a")
+             for tf in lower_timeframes(results) if results.get(tf) is not None}
+    return AtrAlignment(by_timeframe=by_timeframe, expansion_count=expansion_count, total_count=total_count,
+                        lower=lower)
 
 
 def build_vp_hierarchy(results: dict) -> VpHierarchy:
@@ -112,7 +130,13 @@ def build_vp_hierarchy(results: dict) -> VpHierarchy:
                 f"{slow.timeframe.upper()} ({slow.role}) is still {direction_word(slow.direction)} -- "
                 f"the higher-timeframe location has not confirmed the move."
             )
-    return VpHierarchy(entries=entries, macro_conflict=macro_conflict)
+    lower_entries = [
+        VpHierarchyEntry(timeframe=tf, role="lower timeframe, context only",
+                         setup_type=getattr(results[tf], "vp_setup_type", "none"),
+                         direction=getattr(results[tf], "vp_setup_direction", None))
+        for tf in lower_timeframes(results) if results.get(tf) is not None
+    ]
+    return VpHierarchy(entries=entries, macro_conflict=macro_conflict, lower_entries=lower_entries)
 
 
 def format_atr_alignment(alignment: AtrAlignment) -> str:
@@ -121,6 +145,13 @@ def format_atr_alignment(alignment: AtrAlignment) -> str:
         label = alignment.by_timeframe.get(tf, "n/a")
         if label != "n/a":
             lines.append(f"  {tf.upper()}: {label}")
+    known = {tf: label for tf, label in alignment.lower.items() if label != "n/a"}
+    if known:
+        n_exp = sum(1 for label in known.values() if label == "Expansion")
+        lines.append(f"  LOWER TIMEFRAMES (context only, not in the {alignment.total_count}): "
+                     f"{n_exp}/{len(known)} expanding")
+        for tf, label in known.items():
+            lines.append(f"    {tf.upper()}: {label}")
     return "\n".join(lines)
 
 
@@ -132,4 +163,8 @@ def format_vp_hierarchy(hierarchy: VpHierarchy) -> str:
         lines.append(f"  {entry.timeframe.upper()} [{entry.role}]: {setup_label}{direction_suffix}")
     if hierarchy.macro_conflict:
         lines.append(f"  NOTE: {hierarchy.macro_conflict}")
+    for entry in hierarchy.lower_entries:
+        setup_label = VP_SETUP_LABELS.get(entry.setup_type, entry.setup_type)
+        direction_suffix = f" ({direction_word(entry.direction)})" if entry.direction else ""
+        lines.append(f"  {entry.timeframe.upper()} [{entry.role}]: {setup_label}{direction_suffix}")
     return "\n".join(lines)

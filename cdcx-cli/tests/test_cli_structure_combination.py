@@ -78,7 +78,7 @@ def test_timeframe_matching_a_structural_role_gets_a_merged_block(monkeypatch, c
     assert out.index("STRUCTURE BLOCK (1H (entry confirmation))") < out.index("FINAL SETUP SECTION")
 
 
-def test_timeframe_not_a_structural_role_gets_no_merged_block(monkeypatch, capsys):
+def test_lower_timeframe_gets_an_advisory_merged_block(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_run_single", lambda symbol, timeframe, limit, **kwargs: _fake_signal())
     monkeypatch.setattr(engine_module, "format_report", lambda signal: "REPORT")
     fetch_calls = []
@@ -97,10 +97,11 @@ def test_timeframe_not_a_structural_role_gets_no_merged_block(monkeypatch, capsy
     out = capsys.readouterr().out
 
     assert result == 0
-    # 15m isn't one of the four roles -- no merged block for it, but the final
-    # combined section still needs to fetch all four roles fresh.
-    assert "STRUCTURE BLOCK" not in out
-    assert fetch_calls == ["1w", "1d", "4h", "1h"]
+    # 15m isn't one of the four roles: it gets its own block labelled advisory
+    # (lower timeframe), and the final combined section still fetches all four
+    # roles fresh -- the 1W/1D/4H/1H trigger never uses the 15m data.
+    assert "STRUCTURE BLOCK (15M (lower timeframe, advisory))" in out
+    assert fetch_calls == ["15m", "1w", "1d", "4h", "1h"]
     assert "FINAL SETUP SECTION" in out
 
 
@@ -157,7 +158,7 @@ def test_timeframes_execute_run_structure_section_prints_after_execute_plan(monk
         print("EXECUTE PLAN HERE")
         return 0
 
-    def fake_setup_section(symbol, limit, cache):
+    def fake_setup_section(symbol, limit, cache, timeframes=()):
         order.append("structure_setup")
         print("FINAL SETUP SECTION")
         return True
