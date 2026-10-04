@@ -4,6 +4,9 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-04
+- `8c60342` cdcx-equity below 1h: Robinhood 5m/10m native (15m/30m/45m built), Webull 1m/5m/15m/30m native
+  (10m/45m built), session-anchored to 9:30 ET; VP-BOS/AVP lower-TF rows; read-only range preview. Confluence
+  and --execute still 1h/4h/1d/1w. Protected params: unchanged.
 - `24eff09` Advisory sections (ATR alignment, VP hierarchy, STRUCTURE blocks, setup context/ATR timing, grade note,
   VP-BOS, AVP, range preview) extended to requested lower timeframes as "context only" lines. Protected counts
   (ATR x/4, VP-BOS 2-of-4, 1W/1D/4H/1H roles, gate) unchanged. Protected params: unchanged.
