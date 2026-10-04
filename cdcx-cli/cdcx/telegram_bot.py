@@ -4,9 +4,14 @@ telegram_bot.py
 Read-only Telegram front end for cdcx: ask for an analysis from your phone,
 get the report (and the TradingView chart) back.
 
-    /status [SYMBOL]          multi-timeframe summary only (fast)
-    /analyze [SYMBOL]         full --structure analysis + full report file + 1H chart
-    /chart [SYMBOL] [TF]      TradingView chart screenshot (TF: 5M 15M 1H 4H 1D 1W; default 1H)
+    /status [SYMBOL] [TFs]    multi-timeframe summary only (fast)
+    /analyze [SYMBOL] [TFs]   full --structure analysis + full report file + chart
+    /chart [SYMBOL] [TF]      TradingView chart screenshot (TF: 1M 5M 10M 15M 30M 45M 1H 4H 1D 1W; default 1H)
+
+TFs: optional, any of 1m 5m 10m 15m 30m 45m 1h 4h 1d 1w -- comma- or space-separated
+("/status XRP/USD 15m", "/analyze 5m,15m,45m"). Default 1w,1d,4h,1h. Lower timeframes are
+analysed and reported; only 1h/4h/1d/1w ever count toward cdcx confluence (and the bot
+never runs --execute anyway). Here "1M" means one MINUTE, not one month.
     /report                   the ChatGPT handoff packet (.ai/HANDOFF/packet_for_chatgpt.md)
     /report SYMBOL            the full cdcx report as a file
     /help
@@ -56,6 +61,9 @@ REPO_DIR = CDCX_CLI_DIR.parent
 TV_CLI_JS = CDCX_CLI_DIR / "tradingview-mcp" / "src" / "cli" / "index.js"
 
 TIMEFRAMES = "1w,1d,4h,1h"
+# Every timeframe /status, /analyze and /chart accept (cdcx-ai builds 10m/45m from 5m/15m candles).
+# Only these exact tokens ever reach a subprocess argv.
+ANALYSIS_TIMEFRAMES = ("1m", "5m", "10m", "15m", "30m", "45m", "1h", "4h", "1d", "1w")
 ANALYSIS_TIMEOUT_S = 300
 DEFAULT_SYMBOL = "XRP/USD"
 
@@ -63,7 +71,8 @@ DEFAULT_SYMBOL = "XRP/USD"
 # before it gets near a subprocess -- args are also passed as a list, never a shell.
 _SYMBOL_RE = re.compile(r"^(?:[A-Z0-9]{1,10}/[A-Z0-9]{2,6}|[A-Z]{1,5}(?:\.[A-Z])?)$")
 # /chart timeframe -> TradingView resolution
-CHART_TIMEFRAMES = {"5M": "5", "15M": "15", "1H": "60", "4H": "240", "1D": "D", "1W": "W"}
+CHART_TIMEFRAMES = {"1M": "1", "5M": "5", "10M": "10", "15M": "15", "30M": "30", "45M": "45",
+                    "1H": "60", "4H": "240", "1D": "D", "1W": "W"}
 
 # 409 handling for the reader: exponential backoff, capped -- never a tight loop.
 CONFLICT_BACKOFF_START_S = 5
@@ -73,12 +82,14 @@ ERROR_BACKOFF_MAX_S = 60
 
 HELP = (
     "cdcx bot (read-only, never trades)\n\n"
-    "/status [SYMBOL]      - multi-timeframe summary\n"
-    "/analyze [SYMBOL]     - full analysis + report file + 1H chart\n"
-    "/chart [SYMBOL] [TF]  - TradingView chart (TF: 5M 15M 1H 4H 1D 1W)\n"
+    "/status [SYMBOL] [TFs]   - multi-timeframe summary\n"
+    "/analyze [SYMBOL] [TFs]  - full analysis + report file + chart\n"
+    "/chart [SYMBOL] [TF]     - TradingView chart\n"
     "/report               - ChatGPT handoff packet\n"
     "/report SYMBOL        - full cdcx report file\n\n"
-    "SYMBOL: XRP/USD (crypto) or SPY (stock/ETF). Default: {default}"
+    "SYMBOL: XRP/USD (crypto) or SPY (stock/ETF). Default: {default}\n"
+    "TFs: 1m 5m 10m 15m 30m 45m 1h 4h 1d 1w, e.g. /status XRP/USD 15m or /analyze 5m,15m,45m\n"
+    "(default 1w,1d,4h,1h; 1M = one minute)"
 )
 
 
@@ -91,8 +102,15 @@ def default_symbol() -> str:
 class Command:
     name: str
     symbol: Optional[str] = None
-    timeframe: Optional[str] = None
+    timeframe: Optional[str] = None            # /chart: a CHART_TIMEFRAMES key ("15M")
+    timeframes: Optional[tuple[str, ...]] = None  # /status, /analyze: ANALYSIS_TIMEFRAMES; None = TIMEFRAMES
     error: Optional[str] = None
+
+
+def _timeframe_tokens(arg: str) -> Optional[list[str]]:
+    """'15m' or '5m,15m,45m' -> ['15m'] / ['5m', '15m', '45m']; None if any piece isn't one."""
+    pieces = [x for x in arg.lower().split(",") if x]
+    return pieces if pieces and all(x in ANALYSIS_TIMEFRAMES for x in pieces) else None
 
 
 def parse_command(text: str, default: Optional[str] = None) -> Command:
@@ -115,31 +133,56 @@ def parse_command(text: str, default: Optional[str] = None) -> Command:
         return Command(name="report")  # the ChatGPT handoff packet
 
     timeframe = None
+    timeframes = None
     if name == "chart":
         if len(args) > 2:
             return Command(name=name, error="Usage: /chart [SYMBOL] [TF]  e.g. /chart XRP/USD 4H")
         if args and args[-1].upper() in CHART_TIMEFRAMES:
             timeframe = args.pop().upper()
         timeframe = timeframe or "1H"
+    elif name in ("status", "analyze"):
+        picked: list[str] = []
+        while args and (tokens := _timeframe_tokens(args[-1])) is not None:  # trailing TFs, any order
+            picked = tokens + picked
+            args.pop()
+        if picked:
+            timeframes = tuple(dict.fromkeys(picked))  # de-duplicated, order kept
     if len(args) > 1:
-        return Command(name=name, error=f"Usage: /{name} [SYMBOL]  (e.g. /{name} XRP/USD or /{name} SPY)")
+        tf_hint = " [TFs]" if name in ("status", "analyze") else ""
+        return Command(name=name, error=f"Usage: /{name} [SYMBOL]{tf_hint}  (e.g. /{name} XRP/USD"
+                                        f"{' 15m' if tf_hint else ''} or /{name} SPY)")
     symbol = args[0].upper() if args else default
     if not _SYMBOL_RE.match(symbol):
-        return Command(name=name, error=f"'{args[0]}' isn't a symbol I accept (e.g. XRP/USD or SPY).")
-    return Command(name=name, symbol=symbol, timeframe=timeframe)
+        return Command(name=name, error=f"'{args[0]}' isn't a symbol or timeframe I accept "
+                                        "(e.g. XRP/USD, SPY, 15m, 5m,15m,1h).")
+    return Command(name=name, symbol=symbol, timeframe=timeframe, timeframes=timeframes)
 
 
 def is_crypto(symbol: str) -> bool:
     return "/" in symbol
 
 
-def analysis_argv(symbol: str, structure: bool) -> list[str]:
+def analysis_argv(symbol: str, structure: bool, timeframes: Optional[tuple[str, ...]] = None) -> list[str]:
     """The exact read-only command a user would type. Never --execute."""
+    if timeframes and any(tf not in ANALYSIS_TIMEFRAMES for tf in timeframes):
+        raise ValueError(f"unsupported timeframe in {timeframes}")
+    tfs = ",".join(timeframes) if timeframes else TIMEFRAMES
     if is_crypto(symbol):
-        argv = ["cdcx-ai", "--symbol", symbol, "--timeframes", TIMEFRAMES]
+        argv = ["cdcx-ai", "--symbol", symbol, "--timeframes", tfs]
         return argv + (["--structure"] if structure else [])
-    argv = ["cdcx-equity", "--source", "robinhood", "--symbol", symbol, "--timeframes", TIMEFRAMES]
+    argv = ["cdcx-equity", "--source", "robinhood", "--symbol", symbol, "--timeframes", tfs]
     return argv + (["--structure-report"] if structure else [])
+
+
+def _tf_label(timeframes: Optional[tuple[str, ...]]) -> str:
+    return ",".join(timeframes) if timeframes else TIMEFRAMES
+
+
+def _chart_tf(timeframes: Optional[tuple[str, ...]]) -> str:
+    """/analyze's chart: the fastest requested timeframe, else 1H."""
+    if not timeframes:
+        return "1H"
+    return min(timeframes, key=ANALYSIS_TIMEFRAMES.index).upper()
 
 
 def report_source(symbol: str) -> str:
@@ -190,8 +233,9 @@ def extract_decisions(report: str) -> str:
     return "\n".join(lines)
 
 
-def run_analysis(symbol: str, structure: bool, runner=subprocess.run) -> tuple[int, str]:
-    proc = runner(analysis_argv(symbol, structure), cwd=CDCX_CLI_DIR, capture_output=True, text=True,
+def run_analysis(symbol: str, structure: bool, runner=subprocess.run,
+                 timeframes: Optional[tuple[str, ...]] = None) -> tuple[int, str]:
+    proc = runner(analysis_argv(symbol, structure, timeframes), cwd=CDCX_CLI_DIR, capture_output=True, text=True,
                   timeout=ANALYSIS_TIMEOUT_S)
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
@@ -332,8 +376,8 @@ class Bot:
         self.api.send_text(chat_id, HELP.format(default=default_symbol()))
 
     def _cmd_status(self, chat_id: int, cmd: Command) -> None:
-        self.api.send_text(chat_id, f"Running {cmd.symbol} summary...")
-        code, report = run_analysis(cmd.symbol, structure=False, runner=self.runner)
+        self.api.send_text(chat_id, f"Running {cmd.symbol} summary ({_tf_label(cmd.timeframes)})...")
+        code, report = run_analysis(cmd.symbol, structure=False, runner=self.runner, timeframes=cmd.timeframes)
         summary = extract_summary(report)
         if not summary:
             self.api.send_text(chat_id, f"No summary produced (exit {code}):\n{report[-1500:]}", pre=True)
@@ -341,8 +385,9 @@ class Bot:
         self.api.send_text(chat_id, f"{summary}\n\n{extract_decisions(report)}", pre=True,
                            source=report_source(cmd.symbol), symbol=cmd.symbol)
 
-    def _full_report(self, chat_id: int, symbol: str) -> Optional[tuple[str, Path]]:
-        code, report = run_analysis(symbol, structure=True, runner=self.runner)
+    def _full_report(self, chat_id: int, symbol: str,
+                     timeframes: Optional[tuple[str, ...]] = None) -> Optional[tuple[str, Path]]:
+        code, report = run_analysis(symbol, structure=True, runner=self.runner, timeframes=timeframes)
         if not extract_summary(report):
             self.api.send_text(chat_id, f"No summary produced (exit {code}):\n{report[-1500:]}", pre=True)
             return None
@@ -351,8 +396,8 @@ class Bot:
         return report, report_file
 
     def _cmd_analyze(self, chat_id: int, cmd: Command) -> None:
-        self.api.send_text(chat_id, f"Running full {cmd.symbol} analysis (about a minute)...")
-        result = self._full_report(chat_id, cmd.symbol)
+        self.api.send_text(chat_id, f"Running full {cmd.symbol} analysis ({_tf_label(cmd.timeframes)}, about a minute)...")
+        result = self._full_report(chat_id, cmd.symbol, cmd.timeframes)
         if result is None:
             return
         report, report_file = result
@@ -365,7 +410,7 @@ class Bot:
         self.api.send_text(chat_id, "NO TRADE = insufficient confirmation, not a sell signal. Not financial advice.")
         self.api.upload("sendDocument", chat_id, "document", report_file, caption=f"Full cdcx report -- {cmd.symbol}",
                         **tag)
-        self._send_chart(chat_id, cmd.symbol, "1H")
+        self._send_chart(chat_id, cmd.symbol, _chart_tf(cmd.timeframes))
 
     def _cmd_chart(self, chat_id: int, cmd: Command) -> None:
         self._send_chart(chat_id, cmd.symbol, cmd.timeframe or "1H", announce=True)
