@@ -3,6 +3,11 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-04
+- `b26455d` XRP/USD BOS trigger-map watcher (`trading/alerts/xrp_bos_trigger_watch.py`): Telegram alert once per
+  closed-bar 15m/1H/4H/1D break, 1H retest held/failed, and paper stop/TP1 touch. Send-only, alert-only.
+  Protected params: unchanged.
+
 ## 2026-10-03
 - `3c83ab6` CDCX-AI TRADE ANALYSIS shows Long/Short entry, stop, breakeven, TP1-TP4 and R:R under the existing
   lines, using the same 1.5x ATR + 2.2/2.6/3.2/4.5 R ladder (user's choice over 1R-4R). Display-only; existing
