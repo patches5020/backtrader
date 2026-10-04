@@ -4,6 +4,8 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-04
+- `a15e764` Committed the Sep 29–30 leftovers: dated `.ai/SHARED/reports/` (XRP MTF report + trade status), the
+  archived stray trade log, and their change notes/zips. Data and notes only. Protected params: unchanged.
 - `b26455d` XRP/USD BOS trigger-map watcher (`trading/alerts/xrp_bos_trigger_watch.py`): Telegram alert once per
   closed-bar 15m/1H/4H/1D break, 1H retest held/failed, and paper stop/TP1 touch. Send-only, alert-only.
   Protected params: unchanged.
