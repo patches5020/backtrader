@@ -3,6 +3,12 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-05
+- `7781c03` tests/conftest.py: every test's journal + trade log go to tmp_path -- the suite had been writing fixture
+  BTC/USDT "trades" into the real trading/paper/ (486 files). Protected params: unchanged.
+- `6685587` XRP watcher config-driven (xrp_bos_watch_config.json), cdcx-style ATR-margin retests, re-armed with
+  break-even 1.532 / weekly VAL 1.5379 / 1.5096 retest / 4H-fail 1.4913. Alert-only. Protected params: unchanged.
+
 ## 2026-10-04
 - `8c60342` cdcx-equity below 1h: Robinhood 5m/10m native (15m/30m/45m built), Webull 1m/5m/15m/30m native
   (10m/45m built), session-anchored to 9:30 ET; VP-BOS/AVP lower-TF rows; read-only range preview. Confluence
