@@ -1,0 +1,24 @@
+{
+  "_about": "Trigger map for xrp_bos_trigger_watch.py. Re-armed 2026-10-05 ~00:50 UTC from cdcx swing levels (close beyond swing +/- 0.25x ATR). Each alert fires once. Closed bars only.",
+  "armed_note": "Re-armed Oct 5: break-even 1.532, weekly VAL 1.5379 (1H + 4H acceptance), new high 1.5285, 1H 1.5096 retest (cdcx-style ATR margin), 4H break fail 1.4913, trend triggers 4H 1.5599 / 1D 1.5735.",
+  "triggers": [
+    {"key": "15m_bull_newhigh", "tf": "15m", "side": "bull", "level": 1.5280, "desc": "15m early warning: close above the 1.5267 high", "next": "Early warning only -- the 1H trigger is a close > 1.5285."},
+    {"key": "15m_bear", "tf": "15m", "side": "bear", "level": 1.5055, "desc": "15m early warning: close below the 1.5068 swing low", "next": "Early warning only -- 1H break of 1.5096 fails on a close < 1.5078."},
+    {"key": "1h_breakeven", "tf": "1h", "side": "bull", "level": 1.5320, "desc": "BREAK-EVEN: 1H close at/above the 1.532 entry", "inclusive": true, "next": "Trade back at break-even. Next: weekly VAL 1.5379 -- acceptance above it is the big one."},
+    {"key": "1h_newhigh", "tf": "1h", "side": "bull", "level": 1.5285, "desc": "1H close above the 1.5267 overnight high (+0.25x ATR)", "next": "Next: break-even 1.532, then weekly VAL 1.5379."},
+    {"key": "1h_weekly_val", "tf": "1h", "side": "bull", "level": 1.5379, "desc": "1H close above the WEEKLY VALUE-AREA LOW 1.5379", "next": "Watch for the 4H close above 1.5379 (acceptance). Then 4H trigger 1.5599 / 4H VAH 1.580."},
+    {"key": "4h_weekly_val", "tf": "4h", "side": "bull", "level": 1.5379, "desc": "4H CLOSE ABOVE THE WEEKLY VALUE-AREA LOW 1.5379 (acceptance back into weekly value)", "next": "Weekly location improving. Next: 4H trend trigger 1.5599, 4H VAH 1.580."},
+    {"key": "4h_bull", "tf": "4h", "side": "bull", "level": 1.5599, "desc": "4H BULLISH BOS (trend confirm): close above the 1.5545 Oct 2 high", "next": "Trend-level bullish confirmation. Next 1D > 1.5735."},
+    {"key": "1d_bull", "tf": "1d", "side": "bull", "level": 1.5735, "desc": "1D BULLISH BOS: daily close above the 1.5545 swing high", "next": "Daily structure turned bullish."},
+    {"key": "1h_break_failed", "tf": "1h", "side": "bear", "level": 1.5078, "desc": "1H break of 1.5096 FAILED: close below 1.5096 by 0.25x ATR", "next": "Back toward 1.5036 / 4H POC 1.495. 4H break fails < 1.4913."},
+    {"key": "1h_bear", "tf": "1h", "side": "bear", "level": 1.4969, "desc": "1H BEARISH BOS: close below the 1.4987 swing low", "next": "Next: 4H break-failure level 1.4913, then 1.4455."},
+    {"key": "4h_break_failed", "tf": "4h", "side": "bear", "level": 1.4913, "desc": "4H VP-BOS FAILED: 4H close below 1.4958 by 0.25x ATR", "next": "The 4H volume-confirmed break is undone. Next 1.4455 / 4H bear trigger 1.4410."},
+    {"key": "4h_bear", "tf": "4h", "side": "bear", "level": 1.4410, "desc": "4H BEARISH BOS: close below the 1.4455 Oct 2 low", "next": "Next 1.4265 / 1D FVG 1.3191-1.3928 (overlaps the 1.3843 stop)."},
+    {"key": "1d_bear", "tf": "1d", "side": "bear", "level": 1.4265, "desc": "1D BEARISH BOS: daily close below the 1.4455 low", "next": "Stop 1.3843 sits inside the 1D FVG 1.3191-1.3928."}
+  ],
+  "retests": [
+    {"key": "1h_1.5096_retest", "tf": "1h", "level": 1.5096, "zone_top": 1.5132, "fail_level": 1.5078,
+     "desc": "1H retest of the 1.5096 break"}
+  ],
+  "trade": {"entry": 1.532, "stop": 1.38430654, "tp1": 1.85693, "qty": 135.41560556}
+}

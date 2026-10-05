@@ -1,12 +1,14 @@
 """
 XRP/USD BOS trigger-map watcher -> Telegram alerts (send-only).
 
-Levels are the trigger map sent to Telegram on 2026-10-04 02:33 UTC (msg 177):
-cdcx's own BOS rule on CLOSED bars -- close beyond the latest labeled swing
-by 0.25x ATR. Each condition alerts ONCE. Also alerts on:
-  * the 1H retest after a 1H break (held / failed), with any cdcx candlestick
-    pattern on that bar;
-  * the open paper trade 5a75fd5f touching its stop (1.3843) or TP1 (1.8569).
+The trigger map lives in xrp_bos_watch_config.json next to this file, so it can
+be re-armed by editing levels, not code. cdcx's BOS rule on CLOSED bars: a close
+beyond the swing by 0.25x ATR (the config levels already include the margin).
+Each alert fires once. Also alerts on:
+  * retests (cdcx-style): HELD when a later bar dips into the retest zone and
+    closes back on the right side of the level; FAILED only on a close beyond
+    the level by the 0.25x ATR margin (`fail_level`), not on a marginal dip;
+  * the open paper trade touching its stop or TP1.
 
 Informational only: it never trades, never opens/closes/edits a paper trade,
 and never reads Telegram (sends through cdcx.telegram_send, which refuses
@@ -27,35 +29,16 @@ from cdcx.telegram_send import send_message
 
 SYMBOL = "XRP/USD"
 HERE = Path(__file__).resolve().parent
+CONFIG = HERE / "xrp_bos_watch_config.json"
 STATE = HERE / "xrp_bos_watch_state.json"
 LOG = HERE / "xrp_bos_watch.log"
 POLL_S = 60
 RUN_FOR_S = 7 * 24 * 3600
 TF_SECS = {"15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
 
-ENTRY, STOP, TP1, QTY, ONE_R = 1.532, 1.38430654, 1.85693, 135.41560556, 1.532 - 1.38430654
 
-# key: (timeframe, side, close level, swing level, description)
-TRIGGERS = {
-    "15m_bull": ("15m", "bull", 1.4916, 1.4910, "15m early warning: close above the 1.4910 swing high"),
-    "15m_bear": ("15m", "bear", 1.4862, 1.4868, "15m early warning: close below the 1.4868 swing low"),
-    "1h_bull": ("1h", "bull", 1.4973, 1.4958, "1H BULLISH BOS: close above the 1.4958 swing high (+ reclaims the 1.495-1.496 POC)"),
-    "1h_bear": ("1h", "bear", 1.4827, 1.4842, "1H BEARISH BOS: close below the 1.4842 swing low"),
-    "4h_bull": ("4h", "bull", 1.5599, 1.5545, "4H BULLISH BOS (trend confirm): close above the 1.5545 Oct 2 high"),
-    "4h_bear": ("4h", "bear", 1.4401, 1.4455, "4H BEARISH BOS (trend confirm): close below the 1.4455 Oct 2 low"),
-    "1d_bull": ("1d", "bull", 1.5805, 1.5607, "1D BULLISH BOS: daily close above the 1.5607 swing high"),
-    "1d_bear": ("1d", "bear", 1.4456, 1.4654, "1D BEARISH BOS: daily close below the 1.4654 swing low (loses 1D VAH 1.447)"),
-}
-NEXT = {
-    "1h_bull": "Next: retest of 1.4958-1.496 should HOLD (hammer / bullish engulfing / tweezer bottom), ATR expansion, then 1.5112-1.53 -> break-even 1.532.",
-    "1h_bear": "Next: a retest of 1.4842 from below should FAIL (shooting star / bearish engulfing / tweezer top), then 1.4796-1.4765 -> 1.4455.",
-    "4h_bull": "Trend-level bullish confirmation. Next 1D > 1.5805; 4H VAH 1.604 / weekly VAL 1.618.",
-    "4h_bear": "Trend-level bearish confirmation. Next 1.4267 -> 1D FVG 1.3191-1.3928, which overlaps the 1.3843 stop.",
-    "1d_bull": "Daily structure turned bullish.",
-    "1d_bear": "Daily lost its value-area high. Stop 1.3843 sits inside the 1D FVG 1.3191-1.3928.",
-    "15m_bull": "Early warning only -- cdcx counts the 1H trigger (close > 1.4973).",
-    "15m_bear": "Early warning only -- cdcx counts the 1H trigger (close < 1.4827).",
-}
+def load_config() -> dict:
+    return json.loads(CONFIG.read_text())
 
 
 def log(msg: str) -> None:
@@ -69,16 +52,18 @@ def load_state() -> dict:
     try:
         return json.loads(STATE.read_text())
     except (OSError, ValueError):
-        return {"fired": {}, "last_bar": {}, "break_bar": {}, "started": time.time()}
+        return {"fired": {}, "last_bar": {}, "started": time.time()}
 
 
 def save_state(state: dict) -> None:
     STATE.write_text(json.dumps(state, indent=1))
 
 
-def pnl(price: float) -> str:
-    usd = (price - ENTRY) * QTY
-    return f"trade 5a75fd5f at {price:.4f}: {'+' if usd >= 0 else '-'}${abs(usd):.2f} ({(price - ENTRY) / ONE_R:+.2f}R)"
+def pnl(trade: dict, price: float) -> str:
+    one_r = trade["entry"] - trade["stop"]
+    usd = (price - trade["entry"]) * trade["qty"]
+    return (f"trade 5a75fd5f at {price:.4f}: {'+' if usd >= 0 else '-'}${abs(usd):.2f} "
+            f"({(price - trade['entry']) / one_r:+.2f}R)")
 
 
 def utc(ts: float) -> str:
@@ -99,7 +84,8 @@ def alert(state: dict, key: str, text: str) -> None:
     log(f"ALERT {key}: {text.splitlines()[0]}")
 
 
-def check(ex: CryptoComExchange, state: dict) -> None:
+def check(ex: CryptoComExchange, state: dict, cfg: dict) -> None:
+    trade = cfg["trade"]
     for tf in TF_SECS:
         ts, o, h, l, c, v, _ = closed_bars(ex, tf)
         last = ts[-1]
@@ -109,34 +95,36 @@ def check(ex: CryptoComExchange, state: dict) -> None:
             continue
         new = [i for i, t in enumerate(ts) if t > state["last_bar"][tf]]
         for i in new:
-            avg = sum(v[max(0, i - 20):i]) / max(1, len(v[max(0, i - 20):i]))
+            window = v[max(0, i - 20):i]
+            avg = sum(window) / max(1, len(window))
             vol_ok = v[i] >= avg
-            pats = ", ".join(f"{p.name} ({p.direction})" for p in detect_patterns(h[:i + 1], l[:i + 1], o[:i + 1], c[:i + 1])) or "none"
+            pats = ", ".join(f"{p.name} ({p.direction})"
+                             for p in detect_patterns(h[:i + 1], l[:i + 1], o[:i + 1], c[:i + 1])) or "none"
             bar = (f"{tf.upper()} bar {utc(ts[i])}Z  O {o[i]:.4f} H {h[i]:.4f} L {l[i]:.4f} C {c[i]:.4f}\n"
                    f"Volume {v[i]:,.0f} vs 20-bar avg {avg:,.0f} -> {'VOLUME-CONFIRMED' if vol_ok else 'NOT volume-confirmed'}\n"
                    f"cdcx candle patterns on this bar: {pats}")
-            for key, (ktf, side, level, swing, desc) in TRIGGERS.items():
-                if ktf != tf or key in state["fired"]:
+            for t in cfg["triggers"]:
+                if t["tf"] != tf or t["key"] in state["fired"]:
                     continue
-                if (side == "bull" and c[i] > level) or (side == "bear" and c[i] < level):
-                    state.setdefault("break_bar", {})[key] = ts[i]  # the retest must come on a LATER bar
-                    alert(state, key, f"🚨 XRP/USD {desc}\nTrigger: close {'>' if side == 'bull' else '<'} {level} "
-                                      f"(swing {swing} {'+' if side == 'bull' else '-'} 0.25x ATR)\n{bar}\n{pnl(c[i])}\n"
-                                      f"{NEXT[key]}\nAlert only -- cdcx NO TRADE / execution gate unchanged.")
-            if tf == "1h":  # retest follow-up, on bars AFTER the break bar
-                for brk, side, swing in (("1h_bull", "bull", 1.4958), ("1h_bear", "bear", 1.4842)):
-                    break_ts = state.get("break_bar", {}).get(brk)
-                    if break_ts is None or ts[i] <= break_ts or f"{brk}_retest" in state["fired"]:
-                        continue
-                    if side == "bull" and l[i] <= 1.4973:
-                        held = c[i] > swing
-                    elif side == "bear" and h[i] >= 1.4827:
-                        held = c[i] < swing
-                    else:
-                        continue
-                    verdict = "HELD" if held else "FAILED (back through the level -- break not accepted)"
-                    alert(state, f"{brk}_retest", f"{'✅' if held else '⚠️'} XRP/USD 1H {side.upper()} BOS retest {verdict}\n"
-                                                  f"Retest of {swing}\n{bar}\n{pnl(c[i])}\nAlert only -- cdcx gate unchanged.")
+                lvl = t["level"]
+                hit = (c[i] >= lvl if t.get("inclusive") else c[i] > lvl) if t["side"] == "bull" else c[i] < lvl
+                if hit:
+                    icon = "🟢" if t["side"] == "bull" else "🔴"
+                    alert(state, t["key"], f"{icon} XRP/USD {t['desc']}\nTrigger: close {'>' if t['side'] == 'bull' else '<'}"
+                                           f"{'=' if t.get('inclusive') else ''} {lvl}\n{bar}\n{pnl(trade, c[i])}\n"
+                                           f"{t['next']}\nAlert only -- cdcx NO TRADE / execution gate unchanged.")
+            for r in cfg.get("retests", []):
+                if r["tf"] != tf or r["key"] in state["fired"]:
+                    continue
+                if c[i] < r["fail_level"]:
+                    verdict, icon = f"FAILED (closed below {r['fail_level']}, beyond the 0.25x ATR margin)", "⚠️"
+                elif l[i] <= r["zone_top"] and c[i] >= r["level"]:
+                    verdict, icon = "HELD (dipped into the retest zone and closed back above)", "✅"
+                else:
+                    continue
+                alert(state, r["key"], f"{icon} XRP/USD {r['desc']}: {verdict}\nLevel {r['level']} | zone to "
+                                       f"{r['zone_top']} | fails below {r['fail_level']}\n{bar}\n{pnl(trade, c[i])}\n"
+                                       "Alert only -- cdcx gate unchanged.")
         if new:
             state["last_bar"][tf] = last
             save_state(state)
@@ -144,31 +132,43 @@ def check(ex: CryptoComExchange, state: dict) -> None:
     # Paper trade: stop / TP1 touched (wick, including the forming 15m bar)
     *_, raw = closed_bars(ex, "15m")
     lo, hi = min(raw.lows[-4:]), max(raw.highs[-4:])
-    if lo <= STOP and "trade_stop" not in state["fired"]:
-        alert(state, "trade_stop", f"🛑 XRP/USD touched the paper stop {STOP:.4f} (low {lo:.4f}).\n{pnl(STOP)}\n"
-                                   "Run `cdcx-ai --update-trades` to record it.")
-    if hi >= TP1 and "trade_tp1" not in state["fired"]:
-        alert(state, "trade_tp1", f"🎯 XRP/USD touched TP1 {TP1:.4f} (high {hi:.4f}).\n{pnl(TP1)}\n"
-                                  "Run `cdcx-ai --update-trades` -- stop to break-even, 25% closes.")
+    if lo <= trade["stop"] and "trade_stop" not in state["fired"]:
+        alert(state, "trade_stop", f"🛑 XRP/USD touched the paper stop {trade['stop']:.4f} (low {lo:.4f}).\n"
+                                   f"{pnl(trade, trade['stop'])}\nRun `cdcx-ai --update-trades` to record it.")
+    if hi >= trade["tp1"] and "trade_tp1" not in state["fired"]:
+        alert(state, "trade_tp1", f"🎯 XRP/USD touched TP1 {trade['tp1']:.4f} (high {hi:.4f}).\n"
+                                  f"{pnl(trade, trade['tp1'])}\nRun `cdcx-ai --update-trades` -- stop to break-even, 25% closes.")
+
+
+def armed_message(cfg: dict) -> str:
+    bulls = [t for t in cfg["triggers"] if t["side"] == "bull"]
+    bears = [t for t in cfg["triggers"] if t["side"] == "bear"]
+    lines = ["🔔 XRP/USD BOS trigger watcher RE-ARMED (closed bars, checked every 60s)", cfg.get("armed_note", ""), "BULLISH:"]
+    lines += [f"  {t['tf'].upper()} close {'>=' if t.get('inclusive') else '>'} {t['level']}  {t['desc'].split(':')[0]}" for t in bulls]
+    lines.append("BEARISH:")
+    lines += [f"  {t['tf'].upper()} close < {t['level']}  {t['desc'].split(':')[0]}" for t in bears]
+    for r in cfg.get("retests", []):
+        lines.append(f"RETEST: {r['desc']} -- HELD if a bar dips to <= {r['zone_top']} and closes >= {r['level']}; "
+                     f"FAILED on a close < {r['fail_level']}")
+    tr = cfg["trade"]
+    lines.append(f"Paper trade: stop {tr['stop']:.4f} / TP1 {tr['tp1']:.4f} touches. Each alert fires once. Runs up to 7 days.")
+    return "\n".join(x for x in lines if x)
 
 
 def main() -> int:
+    cfg = load_config()
     state = load_state()
     ex = CryptoComExchange()
     if "armed" not in state["fired"]:
-        check(ex, state)  # records the current bars so only new closes count
-        send_message("🔔 XRP/USD BOS trigger watcher ARMED (closed bars, checked every 60s)\n"
-                     "1H: BULL close > 1.4973 | BEAR close < 1.4827\n4H: BULL > 1.5599 | BEAR < 1.4401\n"
-                     "1D: BULL > 1.5805 | BEAR < 1.4456\n15m early warning: > 1.4916 | < 1.4862\n"
-                     "Also: 1H retest held/failed, paper stop 1.3843 / TP1 1.8569 touches.\n"
-                     "Each alert fires once. Runs up to 7 days.", source="cdcx-telegram", symbol=SYMBOL)
+        check(ex, state, cfg)  # records the current bars so only new closes count
+        send_message(armed_message(cfg), source="cdcx-telegram", symbol=SYMBOL)
         state["fired"]["armed"] = time.time()
         save_state(state)
         log("armed")
     errors = 0
     while time.time() - state["started"] < RUN_FOR_S:
         try:
-            check(ex, state)
+            check(ex, state, load_config())  # re-read each poll: edits to the config apply live
             errors = 0
         except Exception as exc:  # network / Telegram hiccup: back off and keep watching
             errors += 1
@@ -177,7 +177,8 @@ def main() -> int:
                 log(traceback.format_exc().splitlines()[-1])
             time.sleep(min(600, POLL_S * 2 ** min(errors, 4)))
             continue
-        if all(k in state["fired"] for k in ("1d_bull", "1d_bear", "4h_bull", "4h_bear")):
+        trend_keys = [t["key"] for t in cfg["triggers"] if t["tf"] in ("4h", "1d") and "weekly" not in t["key"]]
+        if trend_keys and all(k in state["fired"] for k in trend_keys):
             break
         time.sleep(POLL_S)
     log("watcher finished")
