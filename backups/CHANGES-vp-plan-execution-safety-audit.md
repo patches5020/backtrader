@@ -1,4 +1,4 @@
-# VP plan execution-safety audit (2026-10-09) -- commit 9015417
+# VP plan execution-safety audit (2026-10-09) -- commit 73abe7c
 
 ## Findings and fixes (cdcx-cli/trading/alerts/xrp_vp_plan_watch.py)
 - **Restart replay:** not possible. `approve()` is only reachable via `--approve`; the watch loop never calls it, and
