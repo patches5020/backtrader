@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from typing import Sequence
 
 from . import risk
@@ -1219,6 +1220,25 @@ def _handle_live_order(
         print("\nThe live order may not have gone through cleanly -- check your exchange account directly.")
 
 
+UPDATE_BAR_TIMEFRAME = "5m"
+UPDATE_BAR_SECONDS = 300
+UPDATE_MAX_BARS = 5000  # ~17 days of 5m candles
+
+
+def _bars_since(exchange, symbol: str, since: float, now: float) -> list[tuple[float, float, float, float]]:
+    """(open, high, low, close) for every 5m candle that overlaps [since, now], oldest first.
+    The candle containing `since` is included: replaying an already-checked range is
+    harmless because every rule only fires on a state change."""
+    limit = min(int((now - since) // UPDATE_BAR_SECONDS) + 2, UPDATE_MAX_BARS)
+    ohlcv = exchange.fetch_ohlcv(symbol, UPDATE_BAR_TIMEFRAME, limit=limit)
+    since_ms = since * 1000
+    return [
+        (o, h, l, c)
+        for ts, o, h, l, c in zip(ohlcv.timestamps, ohlcv.opens, ohlcv.highs, ohlcv.lows, ohlcv.closes)
+        if ts + UPDATE_BAR_SECONDS * 1000 > since_ms
+    ]
+
+
 def _handle_update_trades() -> int:
     from .exchange.cryptocom import CryptoComExchange  # deferred: requires ccxt
 
@@ -1229,17 +1249,26 @@ def _handle_update_trades() -> int:
         print("No open paper trades to update.")
         return 0
 
-    symbols = sorted({t.symbol for t in open_trades})
     exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
 
-    prices_by_symbol: dict[str, float] = {}
-    for sym in symbols:
+    # Replay every 5m candle since each trade was last checked (or opened), so a
+    # stop/TP touched by a wick between runs is caught and filled at its level,
+    # then apply the live price on top.
+    results: dict[str, list[str]] = {}
+    now = time.time()
+    for trade in open_trades:
+        since = trade.last_checked_at or trade.opened_at
         try:
-            prices_by_symbol[sym] = exchange.fetch_ticker_price(sym)
+            bars = _bars_since(exchange, trade.symbol, since, now)
+            price = exchange.fetch_ticker_price(trade.symbol)
         except Exception as exc:
-            print(f"Could not fetch price for {sym}: {exc}", file=sys.stderr)
-
-    results = trade_manager.update_all_open_trades(prices_by_symbol)
+            print(f"Could not fetch candles/price for {trade.symbol}: {exc}", file=sys.stderr)
+            continue
+        events = trade_manager.update_trade_bars(trade, bars + [(price, price, price, price)])
+        trade.last_checked_at = now
+        if events:
+            results[trade.symbol] = events
+    trade_manager.save_trades(trades)
 
     if not results:
         print("Checked open trades -- no rule triggers (no TP/stop/give-back events).")

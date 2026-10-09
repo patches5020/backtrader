@@ -168,3 +168,69 @@ def test_safety_warning_flags_a_bad_slice_not_just_cumulative_loss():
     trade_manager.update_trade(trade, 50000)  # catastrophic gap on the remainder
     assert trade.safety_warning is not None
     assert "safety ceiling" in trade.safety_warning
+
+
+# --- bar-based fills (update_trade_bar / update_trade_bars) ------------------
+
+def test_wick_through_stop_fills_at_stop_not_close():
+    trade, _ = _open_sample_long()  # stop 63725, entry 65000, size 0.157
+    trade_manager.update_trade_bar(trade, 64500, 64600, 63000, 64400)  # wick below, close back above
+    assert trade.status == "closed"
+    assert trade.close_price == 63725
+    assert trade.realized_pnl == round((63725 - 65000) * 0.157, 2)
+
+
+def test_bar_opening_past_stop_fills_at_open_rule_j():
+    trade, _ = _open_sample_long()
+    trade_manager.update_trade_bar(trade, 63000, 63100, 62500, 62800)  # gapped below the stop
+    assert trade.close_price == 63000
+
+
+def test_wick_to_tp1_fills_at_tp1_level():
+    trade, _ = _open_sample_long()
+    trade_manager.update_trade_bar(trade, 65500, 66300, 65400, 65900)
+    assert trade.tp_index_reached == 0
+    assert trade.partial_closes[0]["price"] == 66000
+    assert trade.current_stop == 65000
+
+
+def test_tp_and_stop_in_same_bar_counts_as_stop():
+    trade, _ = _open_sample_long()
+    trade_manager.update_trade_bar(trade, 65000, 66500, 63500, 65000)
+    assert trade.status == "closed"
+    assert "Stopped out" in trade.close_reason
+    assert trade.tp_index_reached == -1
+
+
+def test_short_wick_through_stop_fills_at_stop():
+    trade, _ = trade_manager.open_trade(
+        symbol="ETH/USDT", direction="short", entry_price=3000.0, atr=50.0,
+        stop_price=3075.0, tp_levels=[2900, 2850, 2800, 2700],
+        position_size=1.0, risk_amount=75.0, account_balance=10000.0,
+    )
+    trade_manager.update_trade_bar(trade, 3010, 3120, 3000, 3050)
+    assert trade.close_price == 3075.0
+    assert trade.realized_pnl == -75.0
+
+
+def test_bars_replay_stops_after_close():
+    trade, _ = _open_sample_long()
+    events = trade_manager.update_trade_bars(trade, [
+        (65000, 65200, 64800, 65100),
+        (65100, 65150, 63600, 63900),   # stop touched here
+        (63900, 72000, 63800, 71500),   # would hit every TP if replay didn't stop
+    ])
+    assert trade.status == "closed"
+    assert trade.close_price == 63725
+    assert trade.tp_index_reached == -1
+    assert sum("Stopped out" in e for e in events) == 1
+
+
+def test_old_rows_without_last_checked_at_still_load(tmp_path):
+    trade, _ = _open_sample_long()
+    import json
+    path = settings.trade_state_path
+    rows = json.load(open(path))
+    rows[0].pop("last_checked_at", None)
+    json.dump(rows, open(path, "w"))
+    assert trade_manager.load_trades()[0].last_checked_at is None

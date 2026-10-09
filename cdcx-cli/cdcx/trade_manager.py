@@ -89,6 +89,7 @@ class Trade:
     safety_warning: Optional[str] = None       # set if any single close exceeded the 5% ceiling (rule J)
     opened_at: float = field(default_factory=time.time)
     closed_at: Optional[float] = None
+    last_checked_at: Optional[float] = None    # end of the last candle window replayed by update_trade_bars
 
 
 def _state_path() -> str:
@@ -240,6 +241,38 @@ def update_trade(trade: Trade, current_price: float) -> list[str]:
     Mutates `trade` in place according to the current price. Returns a list
     of human-readable event messages (empty if nothing changed). Caller is
     responsible for saving the trade list afterward.
+
+    A single price is treated as a bar with open == high == low == close, so
+    every fill happens at `current_price` -- see update_trade_bar for how
+    fills work when the bar's range is known.
+    """
+    return update_trade_bar(trade, current_price, current_price, current_price, current_price)
+
+
+def update_trade_bars(trade: Trade, bars: list[tuple[float, float, float, float]]) -> list[str]:
+    """Replays (open, high, low, close) bars in chronological order through
+    update_trade_bar, stopping once the trade closes."""
+    events: list[str] = []
+    for o, h, l, c in bars:
+        if trade.status != "open":
+            break
+        events.extend(update_trade_bar(trade, o, h, l, c))
+    return events
+
+
+def update_trade_bar(trade: Trade, bar_open: float, high: float, low: float, close: float) -> list[str]:
+    """
+    Applies one OHLC bar to `trade`. A level counts as touched if the bar's
+    range reached it (not just its close), and the fill is at that level --
+    the price a resting stop/limit order would get -- unless the bar OPENED
+    already past it (a gap), in which case the fill is the open (rule J:
+    record the worse/better gap fill honestly rather than the planned level).
+
+    The order of prices inside one bar is unknown, so adverse exits (rule I
+    give-back, hard stop) are checked first against the stop as it stood at
+    the bar's open. A TP and a stop touched in the same bar therefore count
+    as a stop-out -- the conservative reading. A stop that a TP ratchets up
+    inside this bar is only checked from the next bar on.
     """
     if trade.status != "open":
         return []
@@ -247,31 +280,45 @@ def update_trade(trade: Trade, current_price: float) -> list[str]:
     events: list[str] = []
     is_long = trade.direction == "long"
 
-    def reached(level: float) -> bool:
-        return current_price >= level if is_long else current_price <= level
+    def adverse_fill(level: float) -> Optional[float]:
+        """Fill price if the bar traded at or through `level` against the position, else None."""
+        if is_long:
+            return None if low > level else min(bar_open, level)
+        return None if high < level else max(bar_open, level)
 
-    def breached_stop() -> bool:
-        return current_price <= trade.current_stop if is_long else current_price >= trade.current_stop
+    def favorable_fill(level: float) -> Optional[float]:
+        """Fill price if the bar traded at or through `level` in the position's favour, else None."""
+        if is_long:
+            return None if high < level else max(bar_open, level)
+        return None if low > level else min(bar_open, level)
 
     # --- rule I: protective give-back exit, only while sitting at breakeven
     # (i.e. TP1 hit but TP2 not yet), before checking TP progression further ---
     if trade.tp_index_reached == 0:
         exit_level = _giveback_exit_level(trade)
-        gave_back = current_price <= exit_level if is_long else current_price >= exit_level
-        if gave_back:
+        fill = adverse_fill(exit_level)
+        if fill is not None:
             reason = (
                 f"Give-back protective exit: price returned to {round(exit_level, 8)} "
                 f"(20% above breakeven) after TP1 -- rule I"
             )
-            _close_size(trade, current_price, trade.remaining_size, None, reason, events)
+            _close_size(trade, fill, trade.remaining_size, None, reason, events)
             return events
+
+    # --- hard stop, wherever it sits at the bar's open ---
+    fill = adverse_fill(trade.current_stop)
+    if fill is not None:
+        reason = "Stopped out at breakeven" if trade.current_stop == trade.entry_price else "Stopped out"
+        _close_size(trade, fill, trade.remaining_size, None, f"{reason} ({trade.current_stop})", events)
+        return events
 
     # --- rules G/H: ratchet stop + partial-close through the TP ladder ---
     last_index = len(trade.tp_levels) - 1
     for i, tp in enumerate(trade.tp_levels):
         if i <= trade.tp_index_reached:
             continue
-        if not reached(tp):
+        fill = favorable_fill(tp)
+        if fill is None:
             break  # TP levels are ordered; can't reach tp[i] without tp[i-1] first in practice
 
         if i == 0:
@@ -288,21 +335,16 @@ def update_trade(trade: Trade, current_price: float) -> list[str]:
             # remains outright -- "TP4 -> close remaining position," not
             # "TP4 closes its own configured % and leaves a runner."
             reason = f"Final target TP{i + 1} reached -- {stop_note}, closing remaining position"
-            _close_size(trade, current_price, trade.remaining_size, i, reason, events)
+            _close_size(trade, fill, trade.remaining_size, i, reason, events)
             return events
 
         close_pct = trade.tp_close_pcts[i] if i < len(trade.tp_close_pcts) else 0.0
         size_to_close = min(trade.position_size * close_pct / 100.0, trade.remaining_size)
         reason = f"TP{i + 1} reached @ {tp} -- {stop_note}, closed {close_pct:g}% of original size"
-        _close_size(trade, current_price, size_to_close, i, reason, events)
+        _close_size(trade, fill, size_to_close, i, reason, events)
 
         if trade.status == "closed":  # this slice happened to exhaust remaining_size
             return events
-
-    # --- hard stop check (only relevant if not already closed above) ---
-    if trade.status == "open" and breached_stop():
-        reason = "Stopped out at breakeven" if trade.current_stop == trade.entry_price else "Stopped out"
-        _close_size(trade, current_price, trade.remaining_size, None, f"{reason} ({trade.current_stop})", events)
 
     return events
 
