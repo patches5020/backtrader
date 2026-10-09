@@ -4,6 +4,9 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-09
+- `1382183` Circuit breaker drawdown now uses a cumulative equity curve from the first trade's balance (first loss
+  and compounding losses counted; was stuck at 0-2%); paper closes stamped with the touching 5m candle (5a75fd5f:
+  15:10 UTC). Protected area changed WITH user approval; thresholds 3 losses / 10% unchanged.
 - `b799744` XRP bullish + bearish VP paper-trade plans in one watcher (xrp_vp_plan_watch.py, replaces the bull-only
   watcher): 12 closed-bar requirements each, levels armed from fresh 4H swings (1.5237 / 1.3176), per-plan
   `--approve` with expiry, one-shot, conflict, data-failure and live range-path/direction preflight. Alert-only
