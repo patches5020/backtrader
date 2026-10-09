@@ -3,6 +3,13 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-09
+- `029104e` XRP bullish paper-trade plan watcher: 12 closed-bar requirements, Telegram progress/permission/
+  invalidation alerts, `--approve` with expiry, one-shot, live range-path/LONG preflight; autostart supervised.
+  Alert-only until approved, paper only. Protected params: unchanged.
+- `3e1df90` Paper stops/TPs fill at their level from 5m candle ranges (gap -> bar open); 5a75fd5f re-recorded at
+  -1R instead of -1.20R. Protected params: unchanged.
+
 ## 2026-10-05
 - `7781c03` tests/conftest.py: every test's journal + trade log go to tmp_path -- the suite had been writing fixture
   BTC/USDT "trades" into the real trading/paper/ (486 files). Protected params: unchanged.
