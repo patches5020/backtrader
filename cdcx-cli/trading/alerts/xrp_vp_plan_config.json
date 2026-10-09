@@ -1,0 +1,15 @@
+{
+  "starting_balance": 1000.0,
+  "symbol": "XRP/USD",
+  "armed_utc": "2026-10-09T09:18:58Z",
+  "expires_utc": "2026-10-16T09:18:58Z",
+  "arming_id": "202610090918",
+  "levels": {
+    "swing_high": 1.5237,
+    "swing_high_utc": "2026-10-06 12:00Z",
+    "swing_low": 1.3176,
+    "swing_low_utc": "2026-10-08 16:00Z",
+    "vwap_anchor_utc": "2026-10-08T16:00:00Z",
+    "price_at_arming": 1.4034
+  }
+}

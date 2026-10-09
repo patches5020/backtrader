@@ -12,8 +12,9 @@
 #   off on a 409 if another reader somehow exists).
 # - XRP/USD BOS trigger watcher: alert-only, send-only; resumes from its state
 #   file (fired alerts are not repeated) and is left stopped once it finished.
-# - XRP/USD bull plan watcher: alert-only, send-only; asks permission on
-#   Telegram when every plan requirement is met, never executes by itself.
+# - XRP/USD VP plan watcher (bullish + bearish plans): alert-only, send-only;
+#   asks permission on Telegram when all 12 requirements of a plan are met,
+#   never executes by itself.
 # - Each service is (re)started at most once per 5 minutes, so a crash loop
 #   can't hammer Telegram or the exchange.
 set -u
@@ -59,9 +60,9 @@ while true; do
     start_once "xrp bos watcher" "xrp_bos_trigger_watch\.py" "$CDCX/trading/alerts" \
       "$CDCX/trading/alerts/xrp_bos_watch.stdout" "$BIN/python" xrp_bos_trigger_watch.py
   fi
-  if ! tail -1 "$CDCX/trading/alerts/xrp_bull_plan_watch.log" 2>/dev/null | grep -q "watcher finished"; then
-    start_once "xrp bull plan watcher" "xrp_bull_plan_watch\.py" "$CDCX/trading/alerts" \
-      "$CDCX/trading/alerts/xrp_bull_plan_watch.stdout" "$BIN/python" xrp_bull_plan_watch.py
+  if ! tail -1 "$CDCX/trading/alerts/xrp_vp_plan_watch.log" 2>/dev/null | grep -q "watcher finished"; then
+    start_once "xrp vp plan watcher" "xrp_vp_plan_watch\.py" "$CDCX/trading/alerts" \
+      "$CDCX/trading/alerts/xrp_vp_plan_watch.stdout" "$BIN/python" xrp_vp_plan_watch.py
   fi
   sleep "${CHECK_S:-60}"
 done

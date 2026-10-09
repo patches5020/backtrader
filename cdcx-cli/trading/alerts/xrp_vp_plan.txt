@@ -1,0 +1,74 @@
+XRP/USD VP PAPER-TRADE PLANS -- 2026-10-09 09:20Z
+
+Last completed candles: 1H 1.4036 closed 2026-10-09 09:00Z | 4H 1.4034 closed 2026-10-09 08:00Z | 1D 1.3797 closed 2026-10-09 00:00Z | 1W 1.5205 closed 2026-10-05 00:00Z
+
+Levels (armed 2026-10-09T09:18:58Z from closed 4H swings): swing high 1.5237 (2026-10-06 12:00Z), swing low 1.3176 (2026-10-08 16:00Z)
+
+🟢 BULLISH xrp-bull-vp (arming 202610090918) -- 2/12 met
+Expires 2026-10-16T09:18:58Z | approval: not given
+FAIL R1 CONFLUENCE: cdcx LONG on 2+ of 1H/4H/1D/1W (non-transitional)
+       only 0 tradeable TF(s) | 1H transitional, 4H transitional, 1D transitional, 1W transitional
+FAIL R2 REGIME: entry TF (1H) trending, 1H not ranging
+       1H transitional
+FAIL R3 CHECKLIST: cdcx entry checklist passes
+       failing: Fibonacci level confirms
+FAIL R4 ATR: expansion on the entry TF or 4H (confirms, never triggers)
+       1H Contraction, 4H Flat, 1D Flat, 1W Flat
+FAIL R5 BOS: bullish BOS on 1H AND 4H, continuation or retest held
+       1H up continuation 1.3998 @ 2026-10-09 09:00Z | 4H - no_break
+FAIL R6 REVERSAL: 4H close > 1.5237, no 4H close < 1.3176 since arming
+       last closed 4H 1.4034 (2026-10-09 08:00Z)
+PASS R7 VWAP: 4H close above anchored VWAP
+       VWAP 1.3569 anchored 2026-10-08T16:00:00Z
+FAIL R8 VP: 1H bullish VP setup AND 4H close >= 1D VAH (back above daily value)
+       1H none - | edge 1.4471 | 4H POC 1.4947 VAH 1.5798 VAL 1.4806 HVN 1.5089 LVN 1.6364 | 1D POC 1.0900 VAH 1.4471 VAL 1.0008 (fixed VP, last 200 closed bars)
+FAIL R9 FVG: 1H bullish FVG, 4H not below a bearish FVG
+       1H Bullish FVG [1.3630-1.3723] | 4H Bearish FVG [1.4516-1.4595]
+FAIL R10 POC BOUNCE: 1H or 4H anchored-VP POC/VAL bullish rejection CONFIRMED (cdcx AVP)
+       1H PENDING @ 1.4002 | 4H NONE
+FAIL R11 RETEST: after the reclaim of 1.5237, 1H retests within 0.0031 and closes above; fail beyond the margin
+       waiting for a 4H close above 1.5237 (reclaim)
+PASS R12 RISK: circuit breaker clear, no open XRP paper trade, paper equity valid
+       losses 1/3 | equity $980.00
+Plan (1H, cdcx levels now): entry 1.4036 ATR 0.0122 stop 1.3853 BE 1.4036 | TP1-4 1.4439 / 1.4513 / 1.4623 / 1.4861 | risk $19.6 (2% equity) -> 1068.7 XRP
+Live execution gate preflight: FAIL -- live confluence is not executable LONG: fewer than 2 tradeable TFs
+
+🔴 BEARISH xrp-bear-vp (arming 202610090918) -- 2/12 met
+Expires 2026-10-16T09:18:58Z | approval: not given
+FAIL R1 CONFLUENCE: cdcx SHORT on 2+ of 1H/4H/1D/1W (non-transitional)
+       only 0 tradeable TF(s) | 1H transitional, 4H transitional, 1D transitional, 1W transitional
+FAIL R2 REGIME: entry TF (1H) trending, 1H not ranging
+       1H transitional
+FAIL R3 CHECKLIST: cdcx entry checklist passes
+       failing: ATR/EMA trend confirms, Fibonacci level confirms, Fair Value Gap confirms, Volume Profile confirms (fixed or anchored)
+FAIL R4 ATR: expansion on the entry TF or 4H (confirms, never triggers)
+       1H Contraction, 4H Flat, 1D Flat, 1W Flat
+FAIL R5 BOS: bearish BOS on 1H AND 4H, continuation or retest held
+       1H up continuation 1.3998 @ 2026-10-09 09:00Z | 4H - no_break
+FAIL R6 BREAKDOWN: 4H close < 1.3176, no 4H close > 1.5237 since arming
+       last closed 4H 1.4034 (2026-10-09 08:00Z)
+FAIL R7 VWAP: 4H close below anchored VWAP
+       VWAP 1.3569 anchored 2026-10-08T16:00:00Z
+FAIL R8 VP: 1H bearish VP setup AND 4H close < 4H VAL (rejected from value)
+       1H none - | edge 1.4806 | 4H POC 1.4947 VAH 1.5798 VAL 1.4806 HVN 1.5089 LVN 1.6364 | 1D POC 1.0900 VAH 1.4471 VAL 1.0008 (fixed VP, last 200 closed bars)
+FAIL R9 FVG: 1H bearish FVG, 4H not above a bullish FVG
+       1H Bullish FVG [1.3630-1.3723] | 4H Bearish FVG [1.4516-1.4595]
+PASS R10 POC REJECTION: 1H or 4H POC bearish rejection CONFIRMED (traded up to POC, closed below, next bar held)
+       1H CONFIRMED rejected POC 1.4002 at 2026-10-09 05:00Z, next bar held below | 4H NONE no closed bar rejected POC 1.4947 in the last 12
+FAIL R11 RETEST: after the breakdown of 1.3176, 1H retests within 0.0031 and closes below; fail beyond the margin
+       waiting for a 4H close below 1.3176 (breakdown)
+PASS R12 RISK: circuit breaker clear, no open XRP paper trade, paper equity valid
+       losses 1/3 | equity $980.00
+Plan (1H, cdcx levels now): entry 1.4036 ATR 0.0122 stop 1.4219 BE 1.4036 | TP1-4 1.3633 / 1.3559 / 1.3449 / 1.3211 | risk $19.6 (2% equity) -> 1068.7 XRP
+Live execution gate preflight: FAIL -- live confluence is not executable SHORT: fewer than 2 tradeable TFs
+
+HOW IT WORKS (both plans)
+- Closed candles only, checked after every 1H close. Levels were derived from fresh cdcx 4H swings at arming
+  and stay fixed until re-armed (--arm); the VWAP is anchored at the latest of those swings.
+- Telegram: progress when the met set changes (with the next requirement to watch), PERMISSION NEEDED at
+  12/12, INVALIDATED on a 4H close through the opposite swing, DATA UNAVAILABLE after 3 failed checks.
+- Nothing executes without approval:  python trading/alerts/xrp_vp_plan_watch.py --approve xrp-bull-vp | xrp-bear-vp
+  (or tell Claude Code "approve xrp-bull-vp"). Approval refuses if expired, already used, an XRP trade is open,
+  data is missing, any requirement fails on fresh bars, or the live gate is the range path / the other direction.
+  Then cdcx's own --execute handler runs on that same data: PAPER only, never --live, 2% of paper equity.
+- One execution per arming. Re-arm:  python trading/alerts/xrp_vp_plan_watch.py --arm
