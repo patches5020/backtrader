@@ -4,6 +4,10 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-09
+- `b799744` XRP bullish + bearish VP paper-trade plans in one watcher (xrp_vp_plan_watch.py, replaces the bull-only
+  watcher): 12 closed-bar requirements each, levels armed from fresh 4H swings (1.5237 / 1.3176), per-plan
+  `--approve` with expiry, one-shot, conflict, data-failure and live range-path/direction preflight. Alert-only
+  until approved, paper only. Protected params: unchanged.
 - `029104e` XRP bullish paper-trade plan watcher: 12 closed-bar requirements, Telegram progress/permission/
   invalidation alerts, `--approve` with expiry, one-shot, live range-path/LONG preflight; autostart supervised.
   Alert-only until approved, paper only. Protected params: unchanged.
