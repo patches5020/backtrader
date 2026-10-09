@@ -16,12 +16,15 @@ DATA UNAVAILABLE (3 failed checks in a row). The watcher NEVER trades.
     python trading/alerts/xrp_vp_plan_watch.py              watch loop
     python trading/alerts/xrp_vp_plan_watch.py --approve xrp-bull-vp | xrp-bear-vp
 
---approve refuses unless: the plan is armed, unexpired, not already approved;
+--approve takes an exclusive lock (one approval at a time) and refuses unless:
+the plan is armed, unexpired, not already approved;
 no XRP paper trade is open; all 12 pass on fresh closed bars; a live preflight
 on the exact data --execute will use is the TREND path in the plan's direction
 (never the range path). It then runs cdcx's own _handle_execute in-process on
 that data, PAPER only (never --live), sized on validated paper equity. One
-execution per arming. Missing/failed data = UNKNOWN = no trade.
+execution per arming. Missing/failed data = UNKNOWN = no trade. Right before
+executing it re-checks expiry, approval state and open trades from disk, and
+refuses if a new 1H bar closed meanwhile or the approval took > 10 min.
 
 Restart safety: every requirement (incl. the R11 retest and invalidation) is
 recomputed from closed-bar history each check (>= 200 1H bars > a 7-day plan);
@@ -30,6 +33,7 @@ the derived retest state is also written to the state file for the record.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import sys
@@ -50,6 +54,8 @@ CONFIG = HERE / "xrp_vp_plan_config.json"
 STATE = HERE / "xrp_vp_plan_state.json"
 LOG = HERE / "xrp_vp_plan_watch.log"
 PLAN_TXT = HERE / "xrp_vp_plan.txt"
+APPROVE_LOCK = HERE / "xrp_vp_plan_approve.lock"
+MAX_APPROVAL_S = 600  # requirements older than this at execution time are stale
 SYMBOL = "XRP/USD"
 POLL_S = 300
 TF_SECS = {"1h": 3600, "4h": 14400, "1d": 86400, "1w": 604800}
@@ -479,6 +485,18 @@ def watch(cfg: dict) -> None:
 
 
 def approve(cfg: dict, pid: str) -> int:
+    """One approval at a time (exclusive lock); see _approve_locked."""
+    with APPROVE_LOCK.open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(f"\nREFUSED {pid}: another approval is in progress -- nothing executed.")
+            log(f"approve {pid} refused: another approval is in progress")
+            return 1
+        return _approve_locked(cfg, pid)
+
+
+def _approve_locked(cfg: dict, pid: str) -> int:
     from cdcx import cli
     from cdcx.config import settings
 
@@ -486,6 +504,8 @@ def approve(cfg: dict, pid: str) -> int:
         print(f"\nREFUSED {pid}: {why} -- nothing executed.")
         log(f"approve {pid} refused: {why}")
         return 1
+
+    started = time.time()
 
     if pid not in PLANS:
         return refuse(f"unknown plan id (use one of {', '.join(PLANS)})")
@@ -519,7 +539,23 @@ def approve(cfg: dict, pid: str) -> int:
     if equity <= 0:
         return refuse(f"paper equity ${equity} is not valid")
 
-    ps["fired"]["approved"] = time.time()  # before executing: a crash can never cause a second execution
+    # Final re-checks immediately before execution (state re-read from disk, not the copy loaded above).
+    now = time.time()
+    if now >= iso(cfg["expires_utc"]):
+        return refuse(f"plan expired at {cfg['expires_utc']} during approval")
+    if now - started > MAX_APPROVAL_S:
+        return refuse(f"approval took {now - started:.0f}s (> {MAX_APPROVAL_S}s) -- requirements are stale, re-run")
+    if now >= res["bar_1h"] / 1000 + 2 * TF_SECS["1h"]:
+        return refuse("a new 1H bar closed during approval -- requirements were checked on an old bar, re-run")
+    state = load_state()
+    ps = plan_state(state, pid)
+    if ps["fired"].get("approved"):
+        return refuse(f"already approved at {utc(ps['fired']['approved'])} (recorded during this approval)")
+    open_xrp = [t for t in trade_manager.load_trades() if t.symbol == SYMBOL and t.status == "open"]
+    if open_xrp:
+        return refuse(f"XRP paper trade {open_xrp[0].id[:8]} ({open_xrp[0].direction}) opened during approval")
+
+    ps["fired"]["approved"] = now  # before executing: a crash can never cause a second execution
     save_state(state)
     log(f"approve {pid}: user approved -> cdcx _handle_execute (paper) on equity ${equity}"
         + (f" (other plan {other[0]} was approved earlier, its trade is closed)" if other else ""))

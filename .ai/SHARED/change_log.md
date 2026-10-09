@@ -4,6 +4,9 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-09
+- `9015417` VP plan execution-safety audit: approval lock (one at a time), final expiry/state/open-trade/fresh-bar
+  rechecks right before execution; offline (22) + end-to-end (7 scenarios, real cdcx open path, temp ledger)
+  harnesses added. Ledger snapshots backed up to D:\\cdcx-paper-trades\\ledger. Protected params: unchanged.
 - `1382183` Circuit breaker drawdown now uses a cumulative equity curve from the first trade's balance (first loss
   and compounding losses counted; was stuck at 0-2%); paper closes stamped with the touching 5m candle (5a75fd5f:
   15:10 UTC). Protected area changed WITH user approval; thresholds 3 losses / 10% unchanged.
