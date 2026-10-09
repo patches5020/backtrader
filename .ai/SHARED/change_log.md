@@ -4,6 +4,9 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-09
+- `e3f4c67` VP plan display: the plan line is now labelled a sizing preview (not an order/entry), with an
+  illustration at the R6 trigger; PERMISSION NEEDED alert says levels come from the live price at approval.
+  Display only. Protected params: unchanged.
 - `73abe7c` VP plan execution-safety audit: approval lock (one at a time), final expiry/state/open-trade/fresh-bar
   rechecks right before execution; offline (22) + end-to-end (7 scenarios, real cdcx open path, temp ledger)
   harnesses added. Ledger snapshots backed up to D:\cdcx-paper-trades\ledger. Protected params: unchanged.
