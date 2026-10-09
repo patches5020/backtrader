@@ -347,6 +347,13 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
     dist = abs(lvls.get("entry", 0) - lvls.get("stop", 0))
     plan = {"entry_tf": entry_tf, "atr": sig[entry_tf].atr, **lvls, "risk_usd": risk_usd,
             "size": round(risk_usd / dist, 2) if dist else None}
+    # Illustration only: the same stop distance and TP R-multiples placed at the R6 trigger, where
+    # this plan can actually fire. cdcx computes the real levels from the live price at approval.
+    if dist:
+        sgn = 1 if up else -1
+        ratios = list(getattr(sig[entry_tf], "tp_ratios", None) or [2.2, 2.6, 3.2, 4.5])
+        plan["at_trigger"] = {"entry": trig, "stop": trig - sgn * dist,
+                              "take_profits": [trig + sgn * r * dist for r in ratios]}
 
     return {"side": side, "reqs": reqs, "all_met": all(r[2] for r in reqs), "invalidated": invalidated,
             "retest": r11d, "plan": plan, "bar_1h": d1h.timestamps[-1], "trigger": trig, "invalidation": inval}
@@ -373,10 +380,16 @@ def table(pid: str, cfg: dict, res: dict, state: dict) -> str:
     for key, name, ok, detail in res["reqs"]:
         lines.append(f"{'PASS' if ok else 'FAIL'} {key} {name}\n       {detail}")
     if p.get("entry"):
-        lines.append(f"Plan ({p['entry_tf'].upper()}, cdcx levels now): entry {p['entry']:.4f} ATR {p['atr']:.4f} "
-                     f"stop {p['stop']:.4f} BE {p['breakeven']:.4f} | TP1-4 "
+        lines.append(f"Sizing preview at last {p['entry_tf'].upper()} close (NOT an order or entry level): "
+                     f"price {p['entry']:.4f} ATR {p['atr']:.4f} stop {p['stop']:.4f} | TP1-4 "
                      + " / ".join(f"{v:.4f}" for v in tps.values())
                      + f" | risk ${p['risk_usd']} (2% equity) -> {p['size']} XRP")
+        t = p.get("at_trigger")
+        if t:
+            lines.append(f"Same distances at the R6 trigger {t['entry']} (illustration): stop {t['stop']:.4f} | TP1-4 "
+                         + " / ".join(f"{v:.4f}" for v in t["take_profits"]))
+        lines.append("The plan can only fire after R6 + R11; the actual entry, stop and TPs are computed by cdcx "
+                     "from the live price at approval.")
     return "\n".join(lines)
 
 
@@ -462,8 +475,8 @@ def watch(cfg: dict) -> None:
                     log(f"{pid} ALL 12 MET -- permission requested")
                     send(f"{'🟢 XRP/USD BULLISH' if side == 'long' else '🔴 XRP/USD BEARISH'} -- PERMISSION NEEDED\n"
                          f"Plan {pid} ({side.upper()}), 12/12 on closed candles. NO TRADE HAS BEEN SUBMITTED.\n"
-                         f"Stop/TPs (cdcx, recomputed at execution): entry ~{p.get('entry', 0):.4f}, stop {p.get('stop', 0):.4f}, "
-                         f"risk ${p['risk_usd']} (2% of validated paper equity)\n"
+                         f"Risk ${p['risk_usd']} (2% of validated paper equity). Entry, stop and TPs are computed by cdcx "
+                         f"from the LIVE price at approval -- the levels below are previews, not orders.\n"
                          f"Invalidation: 4H close {'below' if side == 'long' else 'above'} {res['invalidation']} | "
                          f"expires {cfg['expires_utc']}\n"
                          f"Approve: tell Claude Code \"approve {pid}\", or run\n"
