@@ -234,3 +234,20 @@ def test_old_rows_without_last_checked_at_still_load(tmp_path):
     rows[0].pop("last_checked_at", None)
     json.dump(rows, open(path, "w"))
     assert trade_manager.load_trades()[0].last_checked_at is None
+
+
+def test_bar_replay_stamps_close_with_the_touching_bar_time():
+    trade, _ = _open_sample_long()  # stop 63725
+    trade_manager.update_trade_bars(
+        trade, [(65000, 65100, 64900, 65000), (64900, 64950, 63600, 63900)], [1000.0, 1300.0],
+    )
+    assert trade.closed_at == 1300.0
+    assert trade.partial_closes[-1]["at"] == 1300.0
+
+
+def test_close_without_bar_time_is_stamped_now():
+    import time
+    trade, _ = _open_sample_long()
+    before = time.time()
+    trade_manager.update_trade(trade, 63700)
+    assert trade.closed_at >= before

@@ -123,6 +123,52 @@ def test_for_symbol_only_considers_the_given_symbol():
     assert result.tripped is False  # losses were on a different symbol
 
 
+def test_for_symbol_first_loss_counts_as_drawdown_from_starting_balance():
+    # size 1: entry 100, exit 80 = -$20 on a $1,000 account
+    _open_and_close("XRP/USD", entry_price=100.0, stop_price=90.0, exit_price=80.0, account_balance=1000.0)
+    result = circuit_breaker.check_circuit_breaker_for_symbol(
+        "XRP/USD", max_consecutive_losses=10, max_drawdown_pct=100.0,
+    )
+    # -$20 on $1,000 -- the starting balance is the peak, not the post-loss equity
+    assert result.peak_equity == pytest.approx(1000.0)
+    assert result.current_equity == pytest.approx(980.0)
+    assert result.current_drawdown_pct == pytest.approx(2.0)
+
+
+def test_for_symbol_losses_compound_into_drawdown():
+    # every trade sized on the same --balance 1000: equity must still go 1000 -> 980 -> 960 -> 940
+    for _ in range(3):
+        _open_and_close("XRP/USD", entry_price=100.0, stop_price=90.0, exit_price=80.0, account_balance=1000.0)
+    result = circuit_breaker.check_circuit_breaker_for_symbol(
+        "XRP/USD", max_consecutive_losses=10, max_drawdown_pct=100.0,
+    )
+    assert result.current_equity == pytest.approx(940.0)
+    assert result.current_drawdown_pct == pytest.approx(6.0)
+
+
+def test_for_symbol_drawdown_trigger_trips_from_running_peak():
+    # +$800 win through TP4 (peak 1800), then 8 x -$25 = -$200 -> 1600, i.e. 11.11% below the 1800 peak
+    _open_and_close("XRP/USD", entry_price=100.0, stop_price=90.0, exit_price=900.0, account_balance=1000.0)
+    for _ in range(8):
+        _open_and_close("XRP/USD", entry_price=100.0, stop_price=90.0, exit_price=75.0, account_balance=1000.0)
+    result = circuit_breaker.check_circuit_breaker_for_symbol(
+        "XRP/USD", max_consecutive_losses=float("inf"), max_drawdown_pct=10.0,
+    )
+    assert result.peak_equity == pytest.approx(1800.0)
+    assert result.current_drawdown_pct == pytest.approx(11.11, abs=0.01)
+    assert result.tripped is True and "Drawdown" in result.reason
+
+
+def test_for_symbol_under_drawdown_limit_stays_clear():
+    for _ in range(4):
+        _open_and_close("XRP/USD", entry_price=100.0, stop_price=90.0, exit_price=80.0, account_balance=1000.0)
+    result = circuit_breaker.check_circuit_breaker_for_symbol(
+        "XRP/USD", max_consecutive_losses=float("inf"), max_drawdown_pct=10.0,
+    )
+    assert result.current_drawdown_pct == pytest.approx(8.0)
+    assert result.tripped is False
+
+
 # --- formatting -------------------------------------------------------------
 
 def test_format_circuit_breaker_shows_tripped_status():
@@ -142,3 +188,23 @@ def test_format_circuit_breaker_shows_clear_status():
     )
     text = circuit_breaker.format_circuit_breaker(result)
     assert "clear" in text
+
+
+# --- the breaker actually blocks a new paper trade in the --execute path -------
+
+def test_execute_path_opens_nothing_when_breaker_tripped(capsys):
+    from types import SimpleNamespace
+    from cdcx import cli
+
+    for _ in range(3):
+        _open_and_close("XRP/USD", entry_price=100.0, stop_price=90.0, exit_price=80.0, account_balance=1000.0)
+    before = len(trade_manager.load_trades())
+    plan = SimpleNamespace(entry_price=100.0, atr=5.0, stop_price=92.5, position_size=2.0,
+                           risk_amount=15.0, account_balance=940.0)
+    rc = cli._open_trade_and_maybe_go_live(
+        "XRP/USD", "long", plan, [110.0, 120.0, 130.0, 140.0], ["1h", "4h"], 7,
+        live=False, instrument_name_override=None,
+    )
+    assert rc == 0
+    assert len(trade_manager.load_trades()) == before  # nothing opened
+    assert "Circuit breaker tripped -- no trade opened." in capsys.readouterr().out

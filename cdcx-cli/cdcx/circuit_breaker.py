@@ -98,17 +98,16 @@ def check_circuit_breaker_for_symbol(
 ) -> CircuitBreakerResult:
     """
     Live/paper convenience wrapper: reads trade_manager's persisted closed
-    trades for `symbol`, builds a running equity curve from each trade's
-    `account_balance` (balance the trade was sized against) + its
-    `realized_pnl`, and delegates to check_circuit_breaker().
+    trades for `symbol` and builds a CUMULATIVE equity curve: it starts at
+    the first trade's `account_balance` (the balance it was sized against)
+    and adds each closed trade's `realized_pnl` in close order. The starting
+    balance is part of the curve, so the very first loss already counts as
+    drawdown from peak, and losses compound (3 x -$20 on $1,000 = 6%, not 2%).
 
     Note: this project doesn't track a single persistent "current account
-    equity" across CLI invocations (each run takes --balance fresh) -- this
-    reconstructs equity from each trade's own recorded account_balance,
-    which is only as accurate as --balance being passed consistently run to
-    run. Good enough to catch a losing streak within one continuous session;
-    treat the drawdown-from-peak number as approximate across sessions with
-    a changing --balance.
+    equity" across CLI invocations (each run takes --balance fresh); only
+    the FIRST trade's balance anchors the curve, later trades' --balance
+    values don't reset it.
     """
     trades = [
         t for t in trade_manager.load_trades()
@@ -122,8 +121,10 @@ def check_circuit_breaker_for_symbol(
             peak_equity=0.0, current_equity=0.0,
         )
 
-    equity_curve = [t.account_balance + t.realized_pnl for t in trades]
     pnls = [t.realized_pnl for t in trades]
+    equity_curve = [trades[0].account_balance]
+    for pnl in pnls:
+        equity_curve.append(equity_curve[-1] + pnl)
     peak_equity = max(equity_curve)
     current_equity = equity_curve[-1]
 

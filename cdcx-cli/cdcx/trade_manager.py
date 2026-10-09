@@ -194,6 +194,7 @@ MAX_LOSS_PCT_CEILING = 5.0  # rule J: never intentionally allow more than this
 
 def _close_size(
     trade: Trade, price: float, size: float, tp_index: Optional[int], reason: str, events: list[str],
+    at: Optional[float] = None,
 ) -> None:
     """
     Realizes P&L on `size` units of `trade` (a partial or the final full
@@ -214,7 +215,7 @@ def _close_size(
 
     trade.partial_closes.append({
         "tp_index": tp_index, "price": price, "size_closed": round(size, 10),
-        "pnl": round(pnl, 2), "reason": reason, "at": time.time(),
+        "pnl": round(pnl, 2), "reason": reason, "at": at if at is not None else time.time(),
     })
 
     if pnl_pct <= -MAX_LOSS_PCT_CEILING:
@@ -232,7 +233,7 @@ def _close_size(
         trade.status = "closed"
         trade.close_price = price
         trade.close_reason = reason
-        trade.closed_at = time.time()
+        trade.closed_at = at if at is not None else time.time()
         trade.remaining_size = 0.0
 
 
@@ -249,18 +250,24 @@ def update_trade(trade: Trade, current_price: float) -> list[str]:
     return update_trade_bar(trade, current_price, current_price, current_price, current_price)
 
 
-def update_trade_bars(trade: Trade, bars: list[tuple[float, float, float, float]]) -> list[str]:
+def update_trade_bars(
+    trade: Trade, bars: list[tuple[float, float, float, float]], times: Optional[list[Optional[float]]] = None,
+) -> list[str]:
     """Replays (open, high, low, close) bars in chronological order through
-    update_trade_bar, stopping once the trade closes."""
+    update_trade_bar, stopping once the trade closes. `times` (unix seconds,
+    one per bar, e.g. each bar's open time) stamps any close made in that bar;
+    None stamps it with the current time."""
     events: list[str] = []
-    for o, h, l, c in bars:
+    for i, (o, h, l, c) in enumerate(bars):
         if trade.status != "open":
             break
-        events.extend(update_trade_bar(trade, o, h, l, c))
+        events.extend(update_trade_bar(trade, o, h, l, c, at=times[i] if times else None))
     return events
 
 
-def update_trade_bar(trade: Trade, bar_open: float, high: float, low: float, close: float) -> list[str]:
+def update_trade_bar(
+    trade: Trade, bar_open: float, high: float, low: float, close: float, at: Optional[float] = None,
+) -> list[str]:
     """
     Applies one OHLC bar to `trade`. A level counts as touched if the bar's
     range reached it (not just its close), and the fill is at that level --
@@ -302,14 +309,14 @@ def update_trade_bar(trade: Trade, bar_open: float, high: float, low: float, clo
                 f"Give-back protective exit: price returned to {round(exit_level, 8)} "
                 f"(20% above breakeven) after TP1 -- rule I"
             )
-            _close_size(trade, fill, trade.remaining_size, None, reason, events)
+            _close_size(trade, fill, trade.remaining_size, None, reason, events, at)
             return events
 
     # --- hard stop, wherever it sits at the bar's open ---
     fill = adverse_fill(trade.current_stop)
     if fill is not None:
         reason = "Stopped out at breakeven" if trade.current_stop == trade.entry_price else "Stopped out"
-        _close_size(trade, fill, trade.remaining_size, None, f"{reason} ({trade.current_stop})", events)
+        _close_size(trade, fill, trade.remaining_size, None, f"{reason} ({trade.current_stop})", events, at)
         return events
 
     # --- rules G/H: ratchet stop + partial-close through the TP ladder ---
@@ -335,13 +342,13 @@ def update_trade_bar(trade: Trade, bar_open: float, high: float, low: float, clo
             # remains outright -- "TP4 -> close remaining position," not
             # "TP4 closes its own configured % and leaves a runner."
             reason = f"Final target TP{i + 1} reached -- {stop_note}, closing remaining position"
-            _close_size(trade, fill, trade.remaining_size, i, reason, events)
+            _close_size(trade, fill, trade.remaining_size, i, reason, events, at)
             return events
 
         close_pct = trade.tp_close_pcts[i] if i < len(trade.tp_close_pcts) else 0.0
         size_to_close = min(trade.position_size * close_pct / 100.0, trade.remaining_size)
         reason = f"TP{i + 1} reached @ {tp} -- {stop_note}, closed {close_pct:g}% of original size"
-        _close_size(trade, fill, size_to_close, i, reason, events)
+        _close_size(trade, fill, size_to_close, i, reason, events, at)
 
         if trade.status == "closed":  # this slice happened to exhaust remaining_size
             return events

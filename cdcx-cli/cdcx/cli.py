@@ -1225,15 +1225,15 @@ UPDATE_BAR_SECONDS = 300
 UPDATE_MAX_BARS = 5000  # ~17 days of 5m candles
 
 
-def _bars_since(exchange, symbol: str, since: float, now: float) -> list[tuple[float, float, float, float]]:
-    """(open, high, low, close) for every 5m candle that overlaps [since, now], oldest first.
+def _bars_since(exchange, symbol: str, since: float, now: float) -> list[tuple[float, float, float, float, float]]:
+    """(open time in unix seconds, open, high, low, close) for every 5m candle that overlaps [since, now], oldest first.
     The candle containing `since` is included: replaying an already-checked range is
     harmless because every rule only fires on a state change."""
     limit = min(int((now - since) // UPDATE_BAR_SECONDS) + 2, UPDATE_MAX_BARS)
     ohlcv = exchange.fetch_ohlcv(symbol, UPDATE_BAR_TIMEFRAME, limit=limit)
     since_ms = since * 1000
     return [
-        (o, h, l, c)
+        (ts / 1000, o, h, l, c)
         for ts, o, h, l, c in zip(ohlcv.timestamps, ohlcv.opens, ohlcv.highs, ohlcv.lows, ohlcv.closes)
         if ts + UPDATE_BAR_SECONDS * 1000 > since_ms
     ]
@@ -1264,7 +1264,11 @@ def _handle_update_trades() -> int:
         except Exception as exc:
             print(f"Could not fetch candles/price for {trade.symbol}: {exc}", file=sys.stderr)
             continue
-        events = trade_manager.update_trade_bars(trade, bars + [(price, price, price, price)])
+        # A close is stamped with the open time of the 5m candle that touched the level
+        # (the live-price step at the end is stamped "now").
+        events = trade_manager.update_trade_bars(
+            trade, [b[1:] for b in bars] + [(price, price, price, price)], [b[0] for b in bars] + [None],
+        )
         trade.last_checked_at = now
         if events:
             results[trade.symbol] = events
