@@ -30,7 +30,10 @@ on the exact data --execute will use is the TREND path in the plan's direction
 that data, PAPER only (never --live), sized on validated paper equity. One
 execution per arming. Missing/failed data = UNKNOWN = no trade. Right before
 executing it re-checks expiry, approval state and open trades from disk, and
-refuses if a new 1H bar closed meanwhile or the approval took > 10 min.
+refuses if a new 1H bar closed meanwhile or the approval took > 10 min. The open-risk
+guard (also part of R12) sums the remaining planned risk of every open paper trade to
+its current stop, adds this plan's risk, and refuses above max_open_risk_pct (2%) of
+paper equity; missing/invalid/stale (> 6h without --update-trades) data fails closed.
 
 Restart safety: every requirement (incl. the R11 retest and invalidation) is
 recomputed from closed-bar history each check (>= 200 1H bars > a 7-day plan);
@@ -41,6 +44,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
+import math
 import os
 import sys
 import time
@@ -66,6 +70,7 @@ TF_SECS = {"1h": 3600, "4h": 14400, "1d": 86400, "1w": 604800}
 GATE_TFS = ["1h", "4h", "1d", "1w"]
 LIMIT = 200
 DATA_FAIL_ALERT_AFTER = 3
+OPEN_RISK_MAX_STALE_S = 6 * 3600  # an open trade not updated (cdcx-ai --update-trades) for longer = stale risk data
 
 
 def configure(symbol: str) -> None:
@@ -94,6 +99,59 @@ def open_symbol_trades() -> list:
 def risk_pct(cfg: dict) -> float:
     """Per-plan risk % of paper equity (config `risk_pct`; 2.0 = cdcx default if absent). Never above 2.0."""
     return min(float(cfg.get("risk_pct", 2.0)), 2.0)
+
+
+def max_open_risk_pct(cfg: dict) -> float:
+    """Cap on planned open risk across ALL open paper trades incl. the proposed one (config
+    `max_open_risk_pct`; 2.0 if absent). Never above 2.0."""
+    return min(float(cfg.get("max_open_risk_pct", 2.0)), 2.0)
+
+
+def trade_remaining_risk(t) -> float:
+    """Planned loss if the REMAINING size is stopped at the trade's CURRENT stop, measured from entry. 0 once the
+    stop is at or past breakeven (realized P&L is already in equity, not here). Raises ValueError on missing or
+    invalid data -- never assumed to be zero. A stop is not a loss cap: gaps/slippage can exceed this."""
+    vals = (t.entry_price, t.current_stop, t.remaining_size)
+    if t.direction not in ("long", "short") or any(v is None for v in vals) \
+            or not all(math.isfinite(float(v)) for v in vals) \
+            or t.entry_price <= 0 or t.current_stop <= 0 or t.remaining_size < 0:
+        raise ValueError(f"{t.symbol} trade {str(t.id)[:8]} has missing/invalid risk data")
+    per_unit = (t.entry_price - t.current_stop) if t.direction == "long" else (t.current_stop - t.entry_price)
+    return max(0.0, per_unit) * t.remaining_size
+
+
+def open_risk(now: float | None = None) -> tuple[float, list[str]]:
+    """Sum of remaining planned risk over ALL open paper trades (any symbol: one shared paper account).
+    Raises ValueError if any open trade's data is invalid or stale (not updated within OPEN_RISK_MAX_STALE_S)."""
+    now = now if now is not None else time.time()
+    total, parts = 0.0, []
+    for t in trade_manager.load_trades():
+        if t.status != "open":
+            continue
+        checked = getattr(t, "last_checked_at", None) or t.opened_at
+        if not checked or now - checked > OPEN_RISK_MAX_STALE_S:
+            age = f"{(now - checked) / 3600:.1f}h" if checked else "never"
+            raise ValueError(f"{t.symbol} trade {str(t.id)[:8]} last updated {age} ago -- stale; run cdcx-ai --update-trades")
+        r = trade_remaining_risk(t)
+        total += r
+        parts.append(f"{t.symbol} {str(t.id)[:8]} ${r:.2f}")
+    return total, parts
+
+
+def open_risk_check(cfg: dict) -> tuple[bool, str]:
+    """(ok, detail): open risk + this plan's proposed risk must stay within max_open_risk_pct of paper equity.
+    Unknown/invalid/stale data fails closed."""
+    eq = paper_equity(cfg)
+    cap = eq * max_open_risk_pct(cfg) / 100
+    proposed = eq * risk_pct(cfg) / 100
+    try:
+        total, parts = open_risk()
+    except Exception as exc:
+        return False, f"open risk UNKNOWN ({exc}) -- fail closed"
+    ok = eq > 0 and total + proposed <= cap + 0.005  # half-cent tolerance for rounding of sizes
+    return ok, (f"open risk ${total:.2f} + this trade ${proposed:.2f} = ${total + proposed:.2f} "
+                f"vs cap ${cap:.2f} ({max_open_risk_pct(cfg):g}% of ${eq:,.2f})"
+                + (f" [{'; '.join(parts)}]" if parts else ""))
 
 
 configure("XRP/USD")
@@ -369,11 +427,13 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
     cb = circuit_breaker.check_circuit_breaker_for_symbol(SYMBOL)
     open_any = open_symbol_trades()
     eq = paper_equity(cfg)
-    r12 = not cb.tripped and not open_any and eq > 0
-    reqs.append(("R12", f"RISK: circuit breaker clear, no open {BASE} paper trade, "
-                        "paper equity valid", r12,
+    orisk_ok, orisk_txt = open_risk_check(cfg)
+    r12 = not cb.tripped and not open_any and eq > 0 and orisk_ok
+    reqs.append(("R12", f"RISK: circuit breaker clear, no open {BASE} paper trade, equity valid, "
+                        f"open risk within {max_open_risk_pct(cfg):g}%", r12,
                  f"losses {cb.consecutive_losses}/3{' TRIPPED' if cb.tripped else ''} | equity ${eq:,.2f}"
-                 + (f" | OPEN trade {open_any[0].id[:8]} {open_any[0].symbol} {open_any[0].direction}" if open_any else "")))
+                 + (f" | OPEN trade {open_any[0].id[:8]} {open_any[0].symbol} {open_any[0].direction}" if open_any else "")
+                 + f" | {orisk_txt}"))
 
     # reference plan from cdcx's own levels on the entry TF
     lvls = sig[entry_tf].directional_levels.get(side, {})
@@ -602,6 +662,11 @@ def _approve_locked(cfg: dict, pid: str) -> int:
     if open_any:
         return refuse(f"{open_any[0].symbol} paper trade {open_any[0].id[:8]} ({open_any[0].direction}) opened during approval")
 
+    orisk_ok, orisk_txt = open_risk_check(cfg)  # under the shared lock, right before execution
+    print(f"Open-risk guard: {orisk_txt}")
+    if not orisk_ok:
+        return refuse(f"open-risk guard: {orisk_txt}")
+
     ps["fired"]["approved"] = now  # before executing: a crash can never cause a second execution
     save_state(state)
     log(f"approve {pid}: user approved -> cdcx _handle_execute (paper) on equity ${equity}, risk {risk_pct(cfg):g}%"
@@ -616,6 +681,9 @@ def _approve_locked(cfg: dict, pid: str) -> int:
     elif new:
         t = new[0]
         ps["fired"]["executed"] = time.time()
+        planned = equity * risk_pct(cfg) / 100
+        if t.risk_amount > planned + 0.01:
+            log(f"WARNING {pid}: recorded risk ${t.risk_amount} exceeds planned ${planned:.2f}")
         msg = (f"✅ {SYMBOL} {pid} approved -> {side.upper()} paper trade {t.id[:8]} opened @ {t.entry_price}, "
                f"stop {t.current_stop}, TP1 {t.tp_levels[0]}, size {t.position_size}, risk ${t.risk_amount}")
     else:

@@ -13,6 +13,11 @@ w.STATE = tmp / "vp_state.json"; w.LOG = tmp / "vp.log"; w.APPROVE_LOCK = tmp / 
 sent = []; w.send = lambda m: sent.append(m)
 executed = []; cli._handle_execute = lambda *a, **k: executed.append(a)
 open_trades = []
+def trade(symbol, direction="long", entry=1.0, stop=0.99, size=980.0, tid="abcdef12", checked=None, status="open"):
+    """Full fake trade; default risk = (1.0 - 0.99) * 980 = $9.80 (1% of $980)."""
+    return types.SimpleNamespace(symbol=symbol, status=status, id=tid, direction=direction, entry_price=entry,
+                                 current_stop=stop, remaining_size=size, opened_at=time.time(),
+                                 last_checked_at=checked if checked is not None else time.time())
 w.trade_manager = types.SimpleNamespace(load_trades=lambda: open_trades)
 w.paper_equity = lambda cfg: 980.0
 w.fetch = lambda ex=None: {"data": {}, "sig": {}}
@@ -41,7 +46,7 @@ live("trending", "STRONG BUY"); check(w.approve(cfg, "xrp-bear-vp") == 1 and not
 def boom(ex=None): raise RuntimeError("exchange down")
 w.fetch = boom; check(w.approve(cfg, "xrp-bull-vp") == 1 and not executed, "data failure -> refused")
 w.fetch = lambda ex=None: {"data": {}, "sig": {}}
-open_trades[:] = [types.SimpleNamespace(symbol="XRP/USD", status="open", id="abcdef12", direction="long")]
+open_trades[:] = [trade("XRP/USD")]
 check(w.approve(cfg, "xrp-bear-vp") == 1 and not executed, "open XRP trade -> conflict refused")
 open_trades[:] = []
 live("trending", "STRONG BUY"); check(w.approve(cfg, "xrp-bull-vp") == 0 and len(executed) == 1, "bull executes")
@@ -59,9 +64,9 @@ check(w.SYMBOL == "XLM/USD" and set(w.PLANS) == {"xlm-bull-vp", "xlm-bear-vp"}, 
 check(w.symbol_for_plan("xlm-bear-vp") == "XLM/USD" and w.symbol_for_plan("xrp-bull-vp") == "XRP/USD"
       and w.symbol_for_plan("doge-bull-vp") is None, "plan id -> symbol")
 check(w.approve(cfg, "xrp-bull-vp") == 1 and not executed, "XRP plan id refused by the XLM watcher")
-open_trades[:] = [types.SimpleNamespace(symbol="XLM/USD", status="open", id="abcdef12", direction="long")]
+open_trades[:] = [trade("XLM/USD")]
 live("trending", "STRONG BUY"); check(w.approve(cfg, "xlm-bull-vp") == 1 and not executed, "open XLM trade blocks XLM")
-open_trades[:] = [types.SimpleNamespace(symbol="XRP/USD", status="open", id="0badc0de", direction="long")]
+open_trades[:] = [trade("XRP/USD", tid="0badc0de")]
 check(w.approve(cfg, "xlm-bull-vp") == 0 and len(executed) == 1 and executed[0][0] == "XLM/USD",
       "open XRP trade does NOT block XLM (one per symbol); XLM executes on XLM/USD")
 check(executed[0][2] == 1.0, "XLM sized at its 1% risk")
@@ -75,6 +80,32 @@ with w.APPROVE_LOCK.open("w") as held:
 check(f"{1.23456789:.{w.DEC}f}" == "1.23457", "XLM prices shown with 5 decimals")
 check(w.risk_pct({"risk_pct": 1.0}) == 1.0 and w.risk_pct({}) == 2.0 and w.risk_pct({"risk_pct": 5}) == 2.0,
       "risk_pct from config, default 2, capped at 2")
+
+# --- calculated open-risk guard (equity $980, 1% per trade, cap 2% = $19.60) ---
+gcfg = {"risk_pct": 1.0}
+open_trades[:] = []
+check(w.open_risk_check(gcfg)[0], "no open trades -> within cap")
+open_trades[:] = [trade("XRP/USD")]                                   # $9.80 open
+ok, why = w.open_risk_check(gcfg); check(ok and "$19.60" in why, "1% open + 1% proposed = 2% -> allowed")
+open_trades[:] = [trade("XRP/USD", size=1960.0)]                      # $19.60 open (a 2%-sized trade)
+check(not w.open_risk_check(gcfg)[0], "2% open + 1% proposed -> refused")
+open_trades[:] = [trade("XRP/USD", stop=1.0, size=1960.0)]            # stop at breakeven -> $0 remaining risk
+check(w.open_risk_check(gcfg)[0], "breakeven stop counts as 0 remaining risk")
+open_trades[:] = [trade("XRP/USD", direction="short", entry=1.0, stop=1.01)]   # short: $9.80
+check(abs(w.open_risk()[0] - 9.8) < 1e-6, "short remaining risk measured above entry")
+open_trades[:] = [trade("XRP/USD", stop=None)]
+ok, why = w.open_risk_check(gcfg); check(not ok and "UNKNOWN" in why, "missing stop -> fail closed")
+open_trades[:] = [trade("XRP/USD", stop=float("nan"))]
+check(not w.open_risk_check(gcfg)[0], "NaN stop -> fail closed")
+open_trades[:] = [trade("XRP/USD", checked=time.time() - 7 * 3600)]
+ok, why = w.open_risk_check(gcfg); check(not ok and "stale" in why, "trade not updated for 7h -> stale, fail closed")
+open_trades[:] = [trade("BTC/USDT", size=1960.0)]                     # unwatched symbol still uses the account's risk
+check(not w.open_risk_check(gcfg)[0], "any open paper trade counts toward the account cap")
+open_trades[:] = [trade("XRP/USD", size=1960.0)]
+w.evaluate = lambda c, s, fx: met(s); live("trending", "STRONG BUY"); n_exec = len(executed)
+check(w.approve(dict(cfg, risk_pct=1.0), "xlm-bull-vp") == 1 and len(executed) == n_exec,
+      "approval refused by the guard when open risk + proposed > 2%")
+open_trades[:] = []
 w.configure("XRP/USD")
 check(w.DEC == 4 and w.CONFIG.name == "xrp_vp_plan_config.json", "XRP defaults restored")
 print(f"XLM + cross-symbol: {n}/{n} OK")
