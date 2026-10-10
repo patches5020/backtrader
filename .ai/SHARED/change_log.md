@@ -3,6 +3,11 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-10
+- `25aa7c6` XLM/USD bull + bear VP paper plans (same 12 rules as XRP) via `--symbol XLM/USD`; XRP verified unchanged on
+  identical data. Shared paper account, one open paper trade across XRP/XLM, one approval at a time. XLM armed
+  0.19709 / 0.19131 until Oct 17. Monitor-only. Protected params: unchanged.
+
 ## 2026-10-09
 - `e3f4c67` VP plan display: the plan line is now labelled a sizing preview (not an order/entry), with an
   illustration at the R6 trigger; PERMISSION NEEDED alert says levels come from the live price at approval.
