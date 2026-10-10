@@ -4,7 +4,8 @@ Volume-Profile paper-trade plans per symbol -- BULLISH and BEARISH -> Telegram a
 xlm-bull-vp / xlm-bear-vp. Each symbol runs its own watcher process with its own
 config/state/log/plan files ({prefix}_vp_plan_*). Shared across symbols: one paper
 account (equity = starting balance + all realized P&L), one approval at a time, and
-at most one open paper trade on any watched symbol. Supersedes xrp_bull_plan_watch.py.
+at most one open paper trade PER symbol, each sized at its config risk_pct (1% for XRP and
+XLM since 2026-10-10; capped at 2%). Supersedes xrp_bull_plan_watch.py.
 
 Each plan has 12 requirements, evaluated on CLOSED candles after every 1H close
 (R1 confluence, R2 regime, R3 checklist, R4 ATR, R5 BOS, R6 reversal/breakdown,
@@ -85,9 +86,14 @@ def symbol_for_plan(pid: str) -> str | None:
     return next((s for s, v in SYMBOLS.items() if pid.startswith(v["prefix"] + "-")), None)
 
 
-def open_watched_trades() -> list:
-    """Open paper trades on ANY watched symbol: one open position at a time across all plans."""
-    return [t for t in trade_manager.load_trades() if t.symbol in SYMBOLS and t.status == "open"]
+def open_symbol_trades() -> list:
+    """Open paper trades on THIS symbol: one open position per symbol (XRP and XLM may each hold one)."""
+    return [t for t in trade_manager.load_trades() if t.symbol == SYMBOL and t.status == "open"]
+
+
+def risk_pct(cfg: dict) -> float:
+    """Per-plan risk % of paper equity (config `risk_pct`; 2.0 = cdcx default if absent). Never above 2.0."""
+    return min(float(cfg.get("risk_pct", 2.0)), 2.0)
 
 
 configure("XRP/USD")
@@ -275,7 +281,7 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
 
     # R3 cdcx entry checklist for this direction
     atr_series = atr_ema_variant1.calculate_atr(d.highs, d.lows, d.closes)
-    chk = evaluate_entry_checklist(sig[entry_tf], side, symbol=SYMBOL, atr_series=atr_series)
+    chk = evaluate_entry_checklist(sig[entry_tf], side, risk_pct=risk_pct(cfg), symbol=SYMBOL, atr_series=atr_series)
     failed = [it.name for it in getattr(chk, "items", []) if not getattr(it, "passed", True)
               and not getattr(it, "advisory", False)]
     reqs.append(("R3", "CHECKLIST: cdcx entry checklist passes", r2 and chk.all_passed,
@@ -361,17 +367,17 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
 
     # R12 risk / position conflict
     cb = circuit_breaker.check_circuit_breaker_for_symbol(SYMBOL)
-    open_any = open_watched_trades()
+    open_any = open_symbol_trades()
     eq = paper_equity(cfg)
     r12 = not cb.tripped and not open_any and eq > 0
-    reqs.append(("R12", f"RISK: circuit breaker clear, no open paper trade on {'/'.join(s.split('/')[0] for s in SYMBOLS)}, "
+    reqs.append(("R12", f"RISK: circuit breaker clear, no open {BASE} paper trade, "
                         "paper equity valid", r12,
                  f"losses {cb.consecutive_losses}/3{' TRIPPED' if cb.tripped else ''} | equity ${eq:,.2f}"
                  + (f" | OPEN trade {open_any[0].id[:8]} {open_any[0].symbol} {open_any[0].direction}" if open_any else "")))
 
     # reference plan from cdcx's own levels on the entry TF
     lvls = sig[entry_tf].directional_levels.get(side, {})
-    risk_usd = round(eq * 0.02, 2)
+    risk_usd = round(eq * risk_pct(cfg) / 100, 2)
     dist = abs(lvls.get("entry", 0) - lvls.get("stop", 0))
     plan = {"entry_tf": entry_tf, "atr": sig[entry_tf].atr, **lvls, "risk_usd": risk_usd,
             "size": round(risk_usd / dist, 2) if dist else None}
@@ -411,7 +417,7 @@ def table(pid: str, cfg: dict, res: dict, state: dict) -> str:
         lines.append(f"Sizing preview at last {p['entry_tf'].upper()} close (NOT an order or entry level): "
                      f"price {p['entry']:.{DEC}f} ATR {p['atr']:.{DEC}f} stop {p['stop']:.{DEC}f} | TP1-4 "
                      + " / ".join(f"{v:.{DEC}f}" for v in tps.values())
-                     + f" | risk ${p['risk_usd']} (2% equity) -> {p['size']} {BASE}")
+                     + f" | risk ${p['risk_usd']} ({risk_pct(cfg):g}% equity) -> {p['size']} {BASE}")
         t = p.get("at_trigger")
         if t:
             lines.append(f"Same distances at the R6 trigger {t['entry']} (illustration): stop {t['stop']:.{DEC}f} | TP1-4 "
@@ -503,7 +509,7 @@ def watch(cfg: dict) -> None:
                     log(f"{pid} ALL 12 MET -- permission requested")
                     send(f"{'🟢 ' + SYMBOL + ' BULLISH' if side == 'long' else '🔴 ' + SYMBOL + ' BEARISH'} -- PERMISSION NEEDED\n"
                          f"Plan {pid} ({side.upper()}), 12/12 on closed candles. NO TRADE HAS BEEN SUBMITTED.\n"
-                         f"Risk ${p['risk_usd']} (2% of validated paper equity). Entry, stop and TPs are computed by cdcx "
+                         f"Risk ${p['risk_usd']} ({risk_pct(cfg):g}% of validated paper equity). Entry, stop and TPs are computed by cdcx "
                          f"from the LIVE price at approval -- the levels below are previews, not orders.\n"
                          f"Invalidation: 4H close {'below' if side == 'long' else 'above'} {res['invalidation']} | "
                          f"expires {cfg['expires_utc']}\n"
@@ -561,7 +567,7 @@ def _approve_locked(cfg: dict, pid: str) -> int:
         return refuse(f"already approved at {utc(ps['fired']['approved'])} for arming {cfg['arming_id']} "
                       "(one execution per arming; re-arm with --arm)")
     other = [p for p in PLANS if p != pid and plan_state(state, p)["fired"].get("approved")]
-    open_any = open_watched_trades()
+    open_any = open_symbol_trades()
     if open_any:
         return refuse(f"{open_any[0].symbol} paper trade {open_any[0].id[:8]} ({open_any[0].direction}) is still open")
     try:
@@ -592,17 +598,17 @@ def _approve_locked(cfg: dict, pid: str) -> int:
     ps = plan_state(state, pid)
     if ps["fired"].get("approved"):
         return refuse(f"already approved at {utc(ps['fired']['approved'])} (recorded during this approval)")
-    open_any = open_watched_trades()
+    open_any = open_symbol_trades()
     if open_any:
         return refuse(f"{open_any[0].symbol} paper trade {open_any[0].id[:8]} ({open_any[0].direction}) opened during approval")
 
     ps["fired"]["approved"] = now  # before executing: a crash can never cause a second execution
     save_state(state)
-    log(f"approve {pid}: user approved -> cdcx _handle_execute (paper) on equity ${equity}"
+    log(f"approve {pid}: user approved -> cdcx _handle_execute (paper) on equity ${equity}, risk {risk_pct(cfg):g}%"
         + (f" (other plan {other[0]} was approved earlier, its trade is closed)" if other else ""))
     before = {t.id for t in trade_manager.load_trades()}
     os.chdir(HERE.parent.parent)  # cdcx-cli/, where cdcx-ai normally runs
-    cli._handle_execute(SYMBOL, equity, None, results, settings.default_limit, live=False)
+    cli._handle_execute(SYMBOL, equity, risk_pct(cfg), results, settings.default_limit, live=False)
 
     new = [t for t in trade_manager.load_trades() if t.id not in before]
     if new and new[0].direction != side:

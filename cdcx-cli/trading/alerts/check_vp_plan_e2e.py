@@ -47,7 +47,7 @@ def fake_handle_execute(symbol, balance, risk_pct, results, limit, live=False, *
         time.sleep(float(os.environ["HOLD_S"]))
     long = side_of(pid) == "long"
     entry, dist = (1.40, 0.03) if symbol == "XRP/USD" else (0.198, 0.004)
-    risk = round(balance * 0.02, 2)
+    risk = round(balance * (risk_pct if risk_pct is not None else 2.0) / 100, 2)
     plan = types.SimpleNamespace(entry_price=entry, atr=0.02, stop_price=entry - dist if long else entry + dist,
                                  position_size=round(risk / dist, 4), risk_amount=risk, account_balance=balance)
     tps = [entry + m * dist if long else entry - m * dist for m in (2.2, 2.6, 3.2, 4.5)]

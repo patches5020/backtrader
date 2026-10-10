@@ -1,6 +1,6 @@
 """Offline checks for xrp_vp_plan_watch (no network, no real ledger/state, execution stubbed):
 approvals both sides, conflicts, data failure, retest, bearish POC rejection; XLM plans and
-cross-symbol rules (one open trade across XRP/XLM, shared approval lock).
+cross-symbol rules (one open trade PER symbol, 1% risk each, shared approval lock).
 Run from anywhere:  python -I cdcx-cli/trading/alerts/check_vp_plan_offline.py"""
 import sys, json, time, types, pathlib, tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -45,7 +45,7 @@ open_trades[:] = [types.SimpleNamespace(symbol="XRP/USD", status="open", id="abc
 check(w.approve(cfg, "xrp-bear-vp") == 1 and not executed, "open XRP trade -> conflict refused")
 open_trades[:] = []
 live("trending", "STRONG BUY"); check(w.approve(cfg, "xrp-bull-vp") == 0 and len(executed) == 1, "bull executes")
-check(executed[0][1] == 980.0 and executed[0][2] is None, "sized on equity, default risk")
+check(executed[0][1] == 980.0 and executed[0][2] == 1.0, "sized on equity at the plan's 1% risk")
 check(w.approve(cfg, "xrp-bull-vp") == 1 and len(executed) == 1, "bull duplicate refused")
 live("trending", "STRONG SELL"); check(w.approve(cfg, "xrp-bear-vp") == 0 and len(executed) == 2, "bear executes (bull trade closed)")
 check(w.approve(cfg, "xrp-bear-vp") == 1 and len(executed) == 2, "bear duplicate refused")
@@ -59,11 +59,12 @@ check(w.SYMBOL == "XLM/USD" and set(w.PLANS) == {"xlm-bull-vp", "xlm-bear-vp"}, 
 check(w.symbol_for_plan("xlm-bear-vp") == "XLM/USD" and w.symbol_for_plan("xrp-bull-vp") == "XRP/USD"
       and w.symbol_for_plan("doge-bull-vp") is None, "plan id -> symbol")
 check(w.approve(cfg, "xrp-bull-vp") == 1 and not executed, "XRP plan id refused by the XLM watcher")
-open_trades[:] = [types.SimpleNamespace(symbol="XRP/USD", status="open", id="abcdef12", direction="long")]
-live("trending", "STRONG BUY"); check(w.approve(cfg, "xlm-bull-vp") == 1 and not executed, "open XRP trade blocks XLM")
-open_trades[:] = [types.SimpleNamespace(symbol="BTC/USDT", status="open", id="0badc0de", direction="long")]
+open_trades[:] = [types.SimpleNamespace(symbol="XLM/USD", status="open", id="abcdef12", direction="long")]
+live("trending", "STRONG BUY"); check(w.approve(cfg, "xlm-bull-vp") == 1 and not executed, "open XLM trade blocks XLM")
+open_trades[:] = [types.SimpleNamespace(symbol="XRP/USD", status="open", id="0badc0de", direction="long")]
 check(w.approve(cfg, "xlm-bull-vp") == 0 and len(executed) == 1 and executed[0][0] == "XLM/USD",
-      "unwatched symbol does not block; XLM executes on XLM/USD")
+      "open XRP trade does NOT block XLM (one per symbol); XLM executes on XLM/USD")
+check(executed[0][2] == 1.0, "XLM sized at its 1% risk")
 open_trades[:] = []
 check(w.approve(cfg, "xlm-bull-vp") == 1 and len(executed) == 1, "XLM duplicate refused")
 import fcntl
@@ -72,6 +73,8 @@ with w.APPROVE_LOCK.open("w") as held:
     live("trending", "STRONG SELL"); check(w.approve(cfg, "xlm-bear-vp") == 1 and len(executed) == 1,
                                            "shared lock: XLM refused while another approval runs")
 check(f"{1.23456789:.{w.DEC}f}" == "1.23457", "XLM prices shown with 5 decimals")
+check(w.risk_pct({"risk_pct": 1.0}) == 1.0 and w.risk_pct({}) == 2.0 and w.risk_pct({"risk_pct": 5}) == 2.0,
+      "risk_pct from config, default 2, capped at 2")
 w.configure("XRP/USD")
 check(w.DEC == 4 and w.CONFIG.name == "xrp_vp_plan_config.json", "XRP defaults restored")
 print(f"XLM + cross-symbol: {n}/{n} OK")

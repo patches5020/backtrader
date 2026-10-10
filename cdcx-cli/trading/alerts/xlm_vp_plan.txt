@@ -1,4 +1,4 @@
-XLM/USD VP PAPER-TRADE PLANS -- 2026-10-10 15:22Z
+XLM/USD VP PAPER-TRADE PLANS -- 2026-10-10 15:46Z
 
 Last completed candles: 1H 0.19818 closed 2026-10-10 15:00Z | 4H 0.19683 closed 2026-10-10 12:00Z | 1D 0.19462 closed 2026-10-10 00:00Z | 1W 0.22426 closed 2026-10-05 00:00Z
 
@@ -28,9 +28,9 @@ FAIL R10 POC BOUNCE: 1H or 4H anchored-VP POC/VAL bullish rejection CONFIRMED (c
        1H NONE | 4H NONE
 FAIL R11 RETEST: after the reclaim of 0.19709, 1H retests within 0.00028 and closes above; fail beyond the margin
        waiting for a 4H close above 0.19709 (reclaim)
-PASS R12 RISK: circuit breaker clear, no open paper trade on XRP/XLM, paper equity valid
+PASS R12 RISK: circuit breaker clear, no open XLM paper trade, paper equity valid
        losses 0/3 | equity $980.00
-Sizing preview at last 1H close (NOT an order or entry level): price 0.19818 ATR 0.00112 stop 0.19650 | TP1-4 0.20189 / 0.20256 / 0.20357 / 0.20576 | risk $19.6 (2% equity) -> 11632.05 XLM
+Sizing preview at last 1H close (NOT an order or entry level): price 0.19818 ATR 0.00112 stop 0.19650 | TP1-4 0.20189 / 0.20256 / 0.20357 / 0.20576 | risk $9.8 (1% equity) -> 5816.02 XLM
 Same distances at the R6 trigger 0.19709 (illustration): stop 0.19540 | TP1-4 0.20080 / 0.20147 / 0.20248 / 0.20467
 The plan can only fire after R6 + R11; the actual entry, stop and TPs are computed by cdcx from the live price at approval.
 Live execution gate preflight: FAIL -- live confluence is not executable LONG: fewer than 2 tradeable TFs
@@ -59,9 +59,9 @@ FAIL R10 POC REJECTION: 1H or 4H POC bearish rejection CONFIRMED (traded up to P
        1H NONE no closed bar rejected POC 0.19262 in the last 12 | 4H NONE no closed bar rejected POC 0.21645 in the last 12
 FAIL R11 RETEST: after the breakdown of 0.19131, 1H retests within 0.00028 and closes below; fail beyond the margin
        waiting for a 4H close below 0.19131 (breakdown)
-PASS R12 RISK: circuit breaker clear, no open paper trade on XRP/XLM, paper equity valid
+PASS R12 RISK: circuit breaker clear, no open XLM paper trade, paper equity valid
        losses 0/3 | equity $980.00
-Sizing preview at last 1H close (NOT an order or entry level): price 0.19818 ATR 0.00112 stop 0.19986 | TP1-4 0.19447 / 0.19380 / 0.19279 / 0.19060 | risk $19.6 (2% equity) -> 11632.05 XLM
+Sizing preview at last 1H close (NOT an order or entry level): price 0.19818 ATR 0.00112 stop 0.19986 | TP1-4 0.19447 / 0.19380 / 0.19279 / 0.19060 | risk $9.8 (1% equity) -> 5816.02 XLM
 Same distances at the R6 trigger 0.19131 (illustration): stop 0.19299 | TP1-4 0.18760 / 0.18693 / 0.18592 / 0.18373
 The plan can only fire after R6 + R11; the actual entry, stop and TPs are computed by cdcx from the live price at approval.
 Live execution gate preflight: FAIL -- live confluence is not executable SHORT: fewer than 2 tradeable TFs
@@ -71,5 +71,5 @@ HOW IT WORKS (XLM, same rules as XRP)
   until re-armed (python trading/alerts/xrp_vp_plan_watch.py --arm --symbol XLM/USD).
 - Telegram: progress, PERMISSION NEEDED at 12/12, INVALIDATED, DATA UNAVAILABLE. Never trades by itself.
 - Approve:  python trading/alerts/xrp_vp_plan_watch.py --approve xlm-bull-vp | xlm-bear-vp  (paper only, never --live)
-- Shared with XRP: one paper account (equity = $1,000 + all realized P&L), one approval at a time, and at most one
-  open paper trade across XRP/XLM.
+- Risk 1% of paper equity per trade (XRP and XLM each). Shared with XRP: one paper account (equity = $1,000 + all
+  realized P&L) and one approval at a time. One open paper trade per coin, so at most 2% total open risk.

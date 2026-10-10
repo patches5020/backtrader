@@ -11,5 +11,6 @@
     "swing_low_utc": "2026-10-08 16:00Z",
     "vwap_anchor_utc": "2026-10-08T16:00:00Z",
     "price_at_arming": 1.4034
-  }
+  },
+  "risk_pct": 1.0
 }
