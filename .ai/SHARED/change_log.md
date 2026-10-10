@@ -4,6 +4,9 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-10
+- `c0f5849` VP plans: calculated open-risk guard (remaining stop risk of all open trades + proposed <= 2% of equity,
+  fail-closed, re-checked under the approval lock) and a real-path sizing test (cdcx sizing at 1% = $9.80 on $980,
+  live_execution tripwire). Code only. Protected params: unchanged.
 - `7743a6e` VP plans risk 2% -> **1% per trade** on XRP and XLM; one open paper trade per coin (max 2% total).
   Protected parameter lowered for these plans WITH user approval; cdcx global default unchanged.
 - `25aa7c6` XLM/USD bull + bear VP paper plans (same 12 rules as XRP) via `--symbol XLM/USD`; XRP verified unchanged on
