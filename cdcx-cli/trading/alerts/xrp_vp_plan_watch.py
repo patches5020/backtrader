@@ -1,6 +1,10 @@
 """
-XRP/USD Volume-Profile paper-trade plans -- BULLISH (xrp-bull-vp) and BEARISH
-(xrp-bear-vp) -> Telegram alerts (send-only). Supersedes xrp_bull_plan_watch.py.
+Volume-Profile paper-trade plans per symbol -- BULLISH and BEARISH -> Telegram alerts
+(send-only). XRP/USD (default): xrp-bull-vp / xrp-bear-vp. XLM/USD (--symbol XLM/USD):
+xlm-bull-vp / xlm-bear-vp. Each symbol runs its own watcher process with its own
+config/state/log/plan files ({prefix}_vp_plan_*). Shared across symbols: one paper
+account (equity = starting balance + all realized P&L), one approval at a time, and
+at most one open paper trade on any watched symbol. Supersedes xrp_bull_plan_watch.py.
 
 Each plan has 12 requirements, evaluated on CLOSED candles after every 1H close
 (R1 confluence, R2 regime, R3 checklist, R4 ATR, R5 BOS, R6 reversal/breakdown,
@@ -14,11 +18,12 @@ DATA UNAVAILABLE (3 failed checks in a row). The watcher NEVER trades.
     python trading/alerts/xrp_vp_plan_watch.py --arm        derive levels from fresh data, (re)arm both plans
     python trading/alerts/xrp_vp_plan_watch.py --once       print both plans + live preflight, send nothing
     python trading/alerts/xrp_vp_plan_watch.py              watch loop
-    python trading/alerts/xrp_vp_plan_watch.py --approve xrp-bull-vp | xrp-bear-vp
+    python trading/alerts/xrp_vp_plan_watch.py --approve xrp-bull-vp | xrp-bear-vp | xlm-bull-vp | xlm-bear-vp
+    add --symbol XLM/USD to --arm / --once / the watch loop for XLM
 
 --approve takes an exclusive lock (one approval at a time) and refuses unless:
 the plan is armed, unexpired, not already approved;
-no XRP paper trade is open; all 12 pass on fresh closed bars; a live preflight
+no paper trade is open on any watched symbol; all 12 pass on fresh closed bars; a live preflight
 on the exact data --execute will use is the TREND path in the plan's direction
 (never the range path). It then runs cdcx's own _handle_execute in-process on
 that data, PAPER only (never --live), sized on validated paper equity. One
@@ -50,19 +55,42 @@ from cdcx.indicators import market_structure, atr_ema_variant1
 from cdcx import regime as regime_module, bos_state as bos_state_module, avp_rejection
 
 HERE = Path(__file__).resolve().parent
-CONFIG = HERE / "xrp_vp_plan_config.json"
-STATE = HERE / "xrp_vp_plan_state.json"
-LOG = HERE / "xrp_vp_plan_watch.log"
-PLAN_TXT = HERE / "xrp_vp_plan.txt"
-APPROVE_LOCK = HERE / "xrp_vp_plan_approve.lock"
+# Watched symbols -> file/plan-id prefix and price decimals. Each symbol has its own config, state, log
+# and plan text; XRP keeps its original file names and plan ids.
+SYMBOLS = {"XRP/USD": {"prefix": "xrp", "dec": 4}, "XLM/USD": {"prefix": "xlm", "dec": 5}}
+APPROVE_LOCK = HERE / "vp_plan_approve.lock"  # shared: one approval at a time across all symbols
 MAX_APPROVAL_S = 600  # requirements older than this at execution time are stale
-SYMBOL = "XRP/USD"
 POLL_S = 300
 TF_SECS = {"1h": 3600, "4h": 14400, "1d": 86400, "1w": 604800}
 GATE_TFS = ["1h", "4h", "1d", "1w"]
 LIMIT = 200
-PLANS = {"xrp-bull-vp": "long", "xrp-bear-vp": "short"}
 DATA_FAIL_ALERT_AFTER = 3
+
+
+def configure(symbol: str) -> None:
+    """Point every per-symbol global at `symbol` (XRP/USD by default)."""
+    global SYMBOL, BASE, DEC, PLANS, CONFIG, STATE, LOG, PLAN_TXT
+    if symbol not in SYMBOLS:
+        raise SystemExit(f"unsupported symbol {symbol} (use one of {', '.join(SYMBOLS)})")
+    pre = SYMBOLS[symbol]["prefix"]
+    SYMBOL, BASE, DEC = symbol, symbol.split("/")[0], SYMBOLS[symbol]["dec"]
+    PLANS = {f"{pre}-bull-vp": "long", f"{pre}-bear-vp": "short"}
+    CONFIG = HERE / f"{pre}_vp_plan_config.json"
+    STATE = HERE / f"{pre}_vp_plan_state.json"
+    LOG = HERE / f"{pre}_vp_plan_watch.log"
+    PLAN_TXT = HERE / f"{pre}_vp_plan.txt"
+
+
+def symbol_for_plan(pid: str) -> str | None:
+    return next((s for s, v in SYMBOLS.items() if pid.startswith(v["prefix"] + "-")), None)
+
+
+def open_watched_trades() -> list:
+    """Open paper trades on ANY watched symbol: one open position at a time across all plans."""
+    return [t for t in trade_manager.load_trades() if t.symbol in SYMBOLS and t.status == "open"]
+
+
+configure("XRP/USD")
 
 
 # --------------------------------------------------------------------------- helpers
@@ -119,9 +147,8 @@ def send(text: str) -> None:
 
 
 def paper_equity(cfg: dict) -> float:
-    """Starting balance + every realized P&L on closed XRP paper trades."""
-    realized = sum(t.realized_pnl for t in trade_manager.load_trades()
-                   if t.symbol == SYMBOL and t.status == "closed")
+    """Starting balance + every realized P&L on closed paper trades (all symbols: one shared paper account)."""
+    realized = sum(t.realized_pnl for t in trade_manager.load_trades() if t.status == "closed")
     return round(cfg["starting_balance"] + realized, 2)
 
 
@@ -156,8 +183,8 @@ def derive_levels(fx: dict) -> dict:
     hi, lo = highs[-1], lows[-1]  # most recent
     anchor_idx = max(hi.index, lo.index)
     return {
-        "swing_high": round(hi.price, 4), "swing_high_utc": utc(d.timestamps[hi.index] / 1000),
-        "swing_low": round(lo.price, 4), "swing_low_utc": utc(d.timestamps[lo.index] / 1000),
+        "swing_high": round(hi.price, DEC), "swing_high_utc": utc(d.timestamps[hi.index] / 1000),
+        "swing_low": round(lo.price, DEC), "swing_low_utc": utc(d.timestamps[lo.index] / 1000),
         "vwap_anchor_utc": datetime.fromtimestamp(d.timestamps[anchor_idx] / 1000, timezone.utc)
                                    .strftime("%Y-%m-%dT%H:%M:%SZ"),
         "price_at_arming": price,
@@ -199,11 +226,11 @@ def retest_state(d4: OHLCV, d1: OHLCV, lvl: float, margin: float, armed: float, 
         return False, f"waiting for a 4H close {'above' if up else 'below'} {lvl} ({word})"
     after = [(l, h, c) for t, l, h, c in zip(d1.timestamps, d1.lows, d1.highs, d1.closes) if t / 1000 >= brk]
     if any((c < lvl - margin) if up else (c > lvl + margin) for _, _, c in after):
-        return False, f"FAILED: 1H closed back {'below' if up else 'above'} {lvl - margin if up else lvl + margin:.4f} after the {word} at {utc(brk)}"
+        return False, f"FAILED: 1H closed back {'below' if up else 'above'} {lvl - margin if up else lvl + margin:.{DEC}f} after the {word} at {utc(brk)}"
     if any((l <= lvl + margin and c > lvl) if up else (h >= lvl - margin and c < lvl) for l, h, c in after):
         return True, f"HELD: 1H tested {lvl} after the {word} at {utc(brk)} and closed {'above' if up else 'below'}"
     return False, (f"{word} at {utc(brk)}; waiting for a 1H {'dip to <=' if up else 'rally to >='} "
-                   f"{lvl + margin if up else lvl - margin:.4f} that closes {'above' if up else 'below'} {lvl}")
+                   f"{lvl + margin if up else lvl - margin:.{DEC}f} that closes {'above' if up else 'below'} {lvl}")
 
 
 def bear_poc_rejection(d: OHLCV, poc: float, lookback: int = 12) -> tuple[str, str]:
@@ -214,10 +241,10 @@ def bear_poc_rejection(d: OHLCV, poc: float, lookback: int = 12) -> tuple[str, s
     for i in range(n - 1, max(0, n - lookback) - 1, -1):
         if d.highs[i] >= poc and d.closes[i] < poc:
             if i == n - 1:
-                return "PENDING", f"rejected POC {poc:.4f} on the newest closed bar; waiting for the next to hold"
+                return "PENDING", f"rejected POC {poc:.{DEC}f} on the newest closed bar; waiting for the next to hold"
             if d.closes[i + 1] < poc:
-                return "CONFIRMED", f"rejected POC {poc:.4f} at {utc(d.timestamps[i] / 1000)}, next bar held below"
-    return "NONE", f"no closed bar rejected POC {poc:.4f} in the last {lookback}"
+                return "CONFIRMED", f"rejected POC {poc:.{DEC}f} at {utc(d.timestamps[i] / 1000)}, next bar held below"
+    return "NONE", f"no closed bar rejected POC {poc:.{DEC}f} in the last {lookback}"
 
 
 def evaluate(cfg: dict, side: str, fx: dict) -> dict:
@@ -280,13 +307,13 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
     through = (c4 > trig) if up else (c4 < trig)
     reqs.append(("R6", f"{'REVERSAL' if up else 'BREAKDOWN'}: 4H close {'>' if up else '<'} {trig}, "
                        f"no 4H close {'<' if up else '>'} {inval} since arming", through and not invalidated,
-                 f"last closed 4H {c4:.4f} ({utc(bar_close_time(d4, len(d4.closes) - 1, '4h'))})"
+                 f"last closed 4H {c4:.{DEC}f} ({utc(bar_close_time(d4, len(d4.closes) - 1, '4h'))})"
                  + (" | INVALIDATED" if invalidated else "")))
 
     # R7 anchored VWAP
     vwap = anchored_vwap(data["1h_long"], iso(lv["vwap_anchor_utc"]))
     reqs.append(("R7", f"VWAP: 4H close {'above' if up else 'below'} anchored VWAP", (c4 > vwap) if up else (c4 < vwap),
-                 f"VWAP {vwap:.4f} anchored {lv['vwap_anchor_utc']}"))
+                 f"VWAP {vwap:.{DEC}f} anchored {lv['vwap_anchor_utc']}"))
 
     # R8 Volume profile acceptance
     vp1 = (sig["1h"].vp_setup_type, sig["1h"].vp_setup_direction)
@@ -298,9 +325,9 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
         r8 = vp1[1] == "down" and c4 < edge
     s1d, s4 = sig["1d"], sig["4h"]
     reqs.append(("R8", f"VP: 1H {'bullish' if up else 'bearish'} VP setup AND {r8_rule}", r8,
-                 f"1H {vp1[0]} {vp1[1] or '-'} | edge {edge:.4f} | "
-                 f"4H POC {s4.poc:.4f} VAH {s4.vah:.4f} VAL {s4.val:.4f} HVN {s4.hvn:.4f} LVN {s4.lvn:.4f} | "
-                 f"1D POC {s1d.poc:.4f} VAH {s1d.vah:.4f} VAL {s1d.val:.4f} (fixed VP, last {LIMIT} closed bars)"))
+                 f"1H {vp1[0]} {vp1[1] or '-'} | edge {edge:.{DEC}f} | "
+                 f"4H POC {s4.poc:.{DEC}f} VAH {s4.vah:.{DEC}f} VAL {s4.val:.{DEC}f} HVN {s4.hvn:.{DEC}f} LVN {s4.lvn:.{DEC}f} | "
+                 f"1D POC {s1d.poc:.{DEC}f} VAH {s1d.vah:.{DEC}f} VAL {s1d.val:.{DEC}f} (fixed VP, last {LIMIT} closed bars)"))
 
     # R9 FVG: 1H gap in direction; 4H not trapped against an active opposing gap
     f4 = s4.labels.get("fair_value_gap", "")
@@ -310,14 +337,14 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
         trapped = f4.startswith("Bullish") and s4.fvg_bottom is not None and c4 >= s4.fvg_bottom
     f1 = sig["1h"].labels.get("fair_value_gap", "")
     r9 = not trapped and f1.startswith("Bullish" if up else "Bearish")
-    gap = lambda s: f"[{s.fvg_bottom:.4f}-{s.fvg_top:.4f}]" if s.fvg_top is not None else ""
+    gap = lambda s: f"[{s.fvg_bottom:.{DEC}f}-{s.fvg_top:.{DEC}f}]" if s.fvg_top is not None else ""
     reqs.append(("R9", f"FVG: 1H {'bullish' if up else 'bearish'} FVG, 4H not {'below a bearish' if up else 'above a bullish'} FVG",
                  r9, f"1H {f1 or '-'} {gap(sig['1h'])} | 4H {f4 or '-'} {gap(s4)}"))
 
     # R10 POC bounce/rejection -- rejection evidence, not a touch
     if up:
         avp = avp_rejection.build_avp_by_tf(SYMBOL, {"1h": d1h, "4h": d4}, timeframes=["1h", "4h"])
-        st10 = {tf: (a.state if a else "n/a", f"@ {a.level:.4f}" if a and a.level else "") for tf, a in avp.items()}
+        st10 = {tf: (a.state if a else "n/a", f"@ {a.level:.{DEC}f}" if a and a.level else "") for tf, a in avp.items()}
         rule10 = "1H or 4H anchored-VP POC/VAL bullish rejection CONFIRMED (cdcx AVP)"
     else:
         st10 = {tf: bear_poc_rejection(data[tf], sig[tf].poc) for tf in ("1h", "4h")}
@@ -330,16 +357,17 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
     margin = 0.25 * sig["1h"].atr
     r11, r11d = retest_state(d4, data["1h_long"], trig, margin, armed, side)
     reqs.append(("R11", f"RETEST: after the {'reclaim' if up else 'breakdown'} of {trig}, 1H retests within "
-                        f"{margin:.4f} and closes {'above' if up else 'below'}; fail beyond the margin", r11, r11d))
+                        f"{margin:.{DEC}f} and closes {'above' if up else 'below'}; fail beyond the margin", r11, r11d))
 
     # R12 risk / position conflict
     cb = circuit_breaker.check_circuit_breaker_for_symbol(SYMBOL)
-    open_xrp = [t for t in trade_manager.load_trades() if t.symbol == SYMBOL and t.status == "open"]
+    open_any = open_watched_trades()
     eq = paper_equity(cfg)
-    r12 = not cb.tripped and not open_xrp and eq > 0
-    reqs.append(("R12", "RISK: circuit breaker clear, no open XRP paper trade, paper equity valid", r12,
+    r12 = not cb.tripped and not open_any and eq > 0
+    reqs.append(("R12", f"RISK: circuit breaker clear, no open paper trade on {'/'.join(s.split('/')[0] for s in SYMBOLS)}, "
+                        "paper equity valid", r12,
                  f"losses {cb.consecutive_losses}/3{' TRIPPED' if cb.tripped else ''} | equity ${eq:,.2f}"
-                 + (f" | OPEN trade {open_xrp[0].id[:8]} {open_xrp[0].direction}" if open_xrp else "")))
+                 + (f" | OPEN trade {open_any[0].id[:8]} {open_any[0].symbol} {open_any[0].direction}" if open_any else "")))
 
     # reference plan from cdcx's own levels on the entry TF
     lvls = sig[entry_tf].directional_levels.get(side, {})
@@ -362,7 +390,7 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
 # --------------------------------------------------------------------------- reporting
 def header(fx: dict) -> str:
     data = fx["data"]
-    stamps = " | ".join(f"{tf.upper()} {data[tf].closes[-1]:.4f} closed {utc(bar_close_time(data[tf], len(data[tf].closes) - 1, tf))}"
+    stamps = " | ".join(f"{tf.upper()} {data[tf].closes[-1]:.{DEC}f} closed {utc(bar_close_time(data[tf], len(data[tf].closes) - 1, tf))}"
                         for tf in GATE_TFS)
     return f"Last completed candles: {stamps}"
 
@@ -381,13 +409,13 @@ def table(pid: str, cfg: dict, res: dict, state: dict) -> str:
         lines.append(f"{'PASS' if ok else 'FAIL'} {key} {name}\n       {detail}")
     if p.get("entry"):
         lines.append(f"Sizing preview at last {p['entry_tf'].upper()} close (NOT an order or entry level): "
-                     f"price {p['entry']:.4f} ATR {p['atr']:.4f} stop {p['stop']:.4f} | TP1-4 "
-                     + " / ".join(f"{v:.4f}" for v in tps.values())
-                     + f" | risk ${p['risk_usd']} (2% equity) -> {p['size']} XRP")
+                     f"price {p['entry']:.{DEC}f} ATR {p['atr']:.{DEC}f} stop {p['stop']:.{DEC}f} | TP1-4 "
+                     + " / ".join(f"{v:.{DEC}f}" for v in tps.values())
+                     + f" | risk ${p['risk_usd']} (2% equity) -> {p['size']} {BASE}")
         t = p.get("at_trigger")
         if t:
-            lines.append(f"Same distances at the R6 trigger {t['entry']} (illustration): stop {t['stop']:.4f} | TP1-4 "
-                         + " / ".join(f"{v:.4f}" for v in t["take_profits"]))
+            lines.append(f"Same distances at the R6 trigger {t['entry']} (illustration): stop {t['stop']:.{DEC}f} | TP1-4 "
+                         + " / ".join(f"{v:.{DEC}f}" for v in t["take_profits"]))
         lines.append("The plan can only fire after R6 + R11; the actual entry, stop and TPs are computed by cdcx "
                      "from the live price at approval.")
     return "\n".join(lines)
@@ -426,7 +454,7 @@ def once(cfg: dict) -> str:
         fx = fetch()
     except Exception as exc:
         return "\n\n".join(unknown_table(pid, str(exc)) for pid in PLANS)
-    out = [f"XRP/USD VP PAPER-TRADE PLANS -- {utc(time.time())}", header(fx),
+    out = [f"{SYMBOL} VP PAPER-TRADE PLANS -- {utc(time.time())}", header(fx),
            f"Levels (armed {cfg['armed_utc']} from closed 4H swings): swing high {cfg['levels']['swing_high']} "
            f"({cfg['levels']['swing_high_utc']}), swing low {cfg['levels']['swing_low']} ({cfg['levels']['swing_low_utc']})"]
     for pid, side in PLANS.items():
@@ -449,7 +477,7 @@ def watch(cfg: dict) -> None:
             log(f"data failure {state['data_failures']}: {exc}")
             if state["data_failures"] >= DATA_FAIL_ALERT_AFTER and not state.get("data_alerted"):
                 try:
-                    send(f"⚠️ XRP/USD VP plans: DATA UNAVAILABLE ({state['data_failures']} checks in a row): {exc}\n"
+                    send(f"⚠️ {SYMBOL} VP plans: DATA UNAVAILABLE ({state['data_failures']} checks in a row): {exc}\n"
                          "All requirements UNKNOWN -> NO TRADE, approvals refused until data returns.")
                     state["data_alerted"] = time.time()
                 except Exception:
@@ -466,14 +494,14 @@ def watch(cfg: dict) -> None:
                 met = [r[0] for r in res["reqs"] if r[2]]
                 log(f"{pid} 1H close: {len(met)}/12 met {met}")
                 if res["invalidated"] and "invalidated" not in ps["fired"]:
-                    send(f"⛔ XRP/USD {pid} INVALIDATED: a 4H bar closed "
+                    send(f"⛔ {SYMBOL} {pid} INVALIDATED: a 4H bar closed "
                          f"{'below' if side == 'long' else 'above'} {res['invalidation']} after arming.\n"
                          "No trade. Re-arm (--arm) to get fresh levels.\n\n" + table(pid, cfg, res, state))
                     ps["fired"]["invalidated"] = time.time()
                 elif res["all_met"] and "all_met" not in ps["fired"] and not ps["fired"].get("approved"):
                     p = res["plan"]
                     log(f"{pid} ALL 12 MET -- permission requested")
-                    send(f"{'🟢 XRP/USD BULLISH' if side == 'long' else '🔴 XRP/USD BEARISH'} -- PERMISSION NEEDED\n"
+                    send(f"{'🟢 ' + SYMBOL + ' BULLISH' if side == 'long' else '🔴 ' + SYMBOL + ' BEARISH'} -- PERMISSION NEEDED\n"
                          f"Plan {pid} ({side.upper()}), 12/12 on closed candles. NO TRADE HAS BEEN SUBMITTED.\n"
                          f"Risk ${p['risk_usd']} (2% of validated paper equity). Entry, stop and TPs are computed by cdcx "
                          f"from the LIVE price at approval -- the levels below are previews, not orders.\n"
@@ -485,7 +513,7 @@ def watch(cfg: dict) -> None:
                          + table(pid, cfg, res, state))
                     ps["fired"]["all_met"] = time.time()
                 elif met != ps["met"]:
-                    send(f"🟡 XRP/USD {pid} progress {len(ps['met'])}/12 -> {len(met)}/12 (no action needed)\n"
+                    send(f"🟡 {SYMBOL} {pid} progress {len(ps['met'])}/12 -> {len(met)}/12 (no action needed)\n"
                          f"{next_to_watch(res)}\n\n" + table(pid, cfg, res, state))
                 if not res["all_met"]:
                     ps["fired"].pop("all_met", None)
@@ -533,9 +561,9 @@ def _approve_locked(cfg: dict, pid: str) -> int:
         return refuse(f"already approved at {utc(ps['fired']['approved'])} for arming {cfg['arming_id']} "
                       "(one execution per arming; re-arm with --arm)")
     other = [p for p in PLANS if p != pid and plan_state(state, p)["fired"].get("approved")]
-    open_xrp = [t for t in trade_manager.load_trades() if t.symbol == SYMBOL and t.status == "open"]
-    if open_xrp:
-        return refuse(f"XRP paper trade {open_xrp[0].id[:8]} ({open_xrp[0].direction}) is still open")
+    open_any = open_watched_trades()
+    if open_any:
+        return refuse(f"{open_any[0].symbol} paper trade {open_any[0].id[:8]} ({open_any[0].direction}) is still open")
     try:
         fx = fetch()
     except Exception as exc:
@@ -564,9 +592,9 @@ def _approve_locked(cfg: dict, pid: str) -> int:
     ps = plan_state(state, pid)
     if ps["fired"].get("approved"):
         return refuse(f"already approved at {utc(ps['fired']['approved'])} (recorded during this approval)")
-    open_xrp = [t for t in trade_manager.load_trades() if t.symbol == SYMBOL and t.status == "open"]
-    if open_xrp:
-        return refuse(f"XRP paper trade {open_xrp[0].id[:8]} ({open_xrp[0].direction}) opened during approval")
+    open_any = open_watched_trades()
+    if open_any:
+        return refuse(f"{open_any[0].symbol} paper trade {open_any[0].id[:8]} ({open_any[0].direction}) opened during approval")
 
     ps["fired"]["approved"] = now  # before executing: a crash can never cause a second execution
     save_state(state)
@@ -578,14 +606,14 @@ def _approve_locked(cfg: dict, pid: str) -> int:
 
     new = [t for t in trade_manager.load_trades() if t.id not in before]
     if new and new[0].direction != side:
-        msg = f"⚠️ XRP/USD {pid}: cdcx opened a {new[0].direction.upper()} paper trade {new[0].id[:8]} -- check it."
+        msg = f"⚠️ {SYMBOL} {pid}: cdcx opened a {new[0].direction.upper()} paper trade {new[0].id[:8]} -- check it."
     elif new:
         t = new[0]
         ps["fired"]["executed"] = time.time()
-        msg = (f"✅ XRP/USD {pid} approved -> {side.upper()} paper trade {t.id[:8]} opened @ {t.entry_price}, "
+        msg = (f"✅ {SYMBOL} {pid} approved -> {side.upper()} paper trade {t.id[:8]} opened @ {t.entry_price}, "
                f"stop {t.current_stop}, TP1 {t.tp_levels[0]}, size {t.position_size}, risk ${t.risk_amount}")
     else:
-        msg = (f"⚪ XRP/USD {pid} approved, but cdcx --execute's own gates refused -- no trade opened. "
+        msg = (f"⚪ {SYMBOL} {pid} approved, but cdcx --execute's own gates refused -- no trade opened. "
                "Plan spent for this arming; re-arm (--arm) to try again.")
     ps["fired"]["execution_result"] = msg
     save_state(state)
@@ -600,7 +628,11 @@ def main() -> int:
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--approve", metavar="PLAN_ID")
+    ap.add_argument("--symbol", default=None, help=f"one of {', '.join(SYMBOLS)} (default XRP/USD; "
+                                                   "--approve infers it from the plan id)")
     a = ap.parse_args()
+    symbol = a.symbol or (symbol_for_plan(a.approve) if a.approve else None) or "XRP/USD"
+    configure(symbol)
     if a.arm:
         cfg = arm(a.days)
         report = once(cfg)

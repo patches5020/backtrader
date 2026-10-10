@@ -1,0 +1,15 @@
+{
+  "starting_balance": 1000.0,
+  "symbol": "XLM/USD",
+  "armed_utc": "2026-10-10T15:22:50Z",
+  "expires_utc": "2026-10-17T15:22:50Z",
+  "arming_id": "202610101522",
+  "levels": {
+    "swing_high": 0.19709,
+    "swing_high_utc": "2026-10-09 16:00Z",
+    "swing_low": 0.19131,
+    "swing_low_utc": "2026-10-09 16:00Z",
+    "vwap_anchor_utc": "2026-10-09T16:00:00Z",
+    "price_at_arming": 0.19683
+  }
+}
