@@ -1,0 +1,10 @@
+{
+  "plan": "XRP/USD bearish rejection of the 1.3316-1.3385 bounce zone (broken 1H VAL .. 1H bearish FVG bottom), 2026-10-14 (5m/15m), paper/advisory only",
+  "armed_utc": "2026-10-14T19:00:00Z",
+  "expires_utc": "2026-10-15T09:00:00Z",
+  "zone_low": 1.3316,
+  "zone_high": 1.3385,
+  "invalidate_above": 1.3479,
+  "atr_mult": 2.0,
+  "paper_equity": 980.0
+}

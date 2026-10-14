@@ -78,5 +78,9 @@ while true; do
     start_once "xrp vwap retest watcher" "xrp_vwap_retest_watch\.py" "$CDCX/trading/alerts" \
       "$CDCX/trading/alerts/xrp_vwap_retest_watch.stdout" "$BIN/python" xrp_vwap_retest_watch.py
   fi
+  if ! tail -1 "$CDCX/trading/alerts/xrp_bounce_zone_watch.log" 2>/dev/null | grep -q "watcher finished"; then
+    start_once "xrp bounce zone watcher" "xrp_bounce_zone_watch\.py" "$CDCX/trading/alerts" \
+      "$CDCX/trading/alerts/xrp_bounce_zone_watch.stdout" "$BIN/python" xrp_bounce_zone_watch.py
+  fi
   sleep "${CHECK_S:-60}"
 done
