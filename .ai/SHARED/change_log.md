@@ -4,6 +4,8 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-14
+- `359f6ac` New alert-only XRP bounce-zone rejection watcher (1.3316-1.3385, closed 5m/15m, stale guard, expires
+  2026-10-15 09:00 UTC) + autostart entry. Protected params: unchanged.
 - `c2a06e5` VWAP retest watcher: volume grades the alert (A strict SMA / B median / C none) instead of blocking it;
   15-min freshness guard; intraday XRP watchers added to cdcx_autostart.sh. Protected params: unchanged.
 - `4a8a609` Intraday range watcher: no duplicate edge alerts (re-arm at the midpoint stored when the alert fired).
