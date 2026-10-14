@@ -69,5 +69,14 @@ while true; do
     start_once "xlm vp plan watcher" "xrp_vp_plan_watch\.py --symbol XLM/USD" "$CDCX/trading/alerts" \
       "$CDCX/trading/alerts/xlm_vp_plan_watch.stdout" "$BIN/python" xrp_vp_plan_watch.py --symbol XLM/USD
   fi
+  # Intraday XRP watchers (alert-only, send-only); left stopped once their plan expired or was invalidated.
+  if ! tail -1 "$CDCX/trading/alerts/xrp_intraday_range_watch.log" 2>/dev/null | grep -q "watcher finished"; then
+    start_once "xrp intraday range watcher" "xrp_intraday_range_watch\.py" "$CDCX/trading/alerts" \
+      "$CDCX/trading/alerts/xrp_intraday_range_watch.stdout" "$BIN/python" xrp_intraday_range_watch.py
+  fi
+  if ! tail -1 "$CDCX/trading/alerts/xrp_vwap_retest_watch.log" 2>/dev/null | grep -q "watcher finished"; then
+    start_once "xrp vwap retest watcher" "xrp_vwap_retest_watch\.py" "$CDCX/trading/alerts" \
+      "$CDCX/trading/alerts/xrp_vwap_retest_watch.stdout" "$BIN/python" xrp_vwap_retest_watch.py
+  fi
   sleep "${CHECK_S:-60}"
 done

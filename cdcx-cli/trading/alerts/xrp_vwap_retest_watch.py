@@ -10,11 +10,15 @@ Re-evaluated from closed candles on every poll (restart-safe):
                  below min(VWAP, bos_5m)
   C2 lower high  that candle's high < the bounce high before it, and < fvg_bottom
   C3 15m break   a 15m candle that closed after the rejection closed below bos_15m
-  C4 volume      rejection candle volume > SMA(17) of the 17 prior 5m volumes
   C5 no reclaim  no 5m close above fvg_bottom from the rejection candle on
+  Volume grade (shown, not required -- the user chose all three C4 variants on 2026-10-14):
+    A  rejection volume > SMA(17) of the 17 prior 5m volumes (strict)
+    B  rejection volume > MEDIAN of those 17 (a flush candle can't inflate it)
+    C  neither -- no volume confirmation
 Invalidated: any 15m close above invalidate_above, or two 15m closes in a row above fvg_bottom.
 
-Levels when all 5 pass: entry = the confirming 15m close; stop = entry + atr_mult x ATR(5m, Wilder 11,
+The alert fires when C1, C2, C3, C5 pass and the confirming 15m candle closed at most FRESH_S ago
+(a setup confirmed earlier is logged, not alerted -- price has moved on). Levels when it fires: entry = the confirming 15m close; stop = entry + atr_mult x ATR(5m, Wilder 11,
 cdcx's own calculate_atr); TP1-4 = entry - 2.2/2.6/3.2/4.5 R (25% each); breakeven = entry after TP1.
 
     python trading/alerts/xrp_vwap_retest_watch.py --once   print the checklist now, send nothing
@@ -44,6 +48,7 @@ SYMBOL = "XRP/USD"
 POLL_S = 30
 TP_R = (2.2, 2.6, 3.2, 4.5)
 LOOKBACK_5M = 24          # how far back (2h) a rejection candle may be
+FRESH_S = 900             # alert only if the confirming 15m close is at most one 15m bar old
 DATA_FAIL_ALERT_AFTER = 3
 
 
@@ -100,7 +105,7 @@ def evaluate(cfg: dict, fx: dict) -> dict:
 
     # C1: most recent rejection candle in the lookback, after arming
     rej = None
-    for i in range(n5 - 1, max(n5 - 1 - LOOKBACK_5M, 17), -1):
+    for i in range(n5 - 1, max(n5 - 1 - LOOKBACK_5M, 16), -1):   # i >= 17: 17 prior bars for the volume grade
         if d5.timestamps[i] / 1000 < since:
             break
         if d5.highs[i] >= vwap and d5.closes[i] < min(vwap, cfg["bos_5m"]):
@@ -109,24 +114,29 @@ def evaluate(cfg: dict, fx: dict) -> dict:
     c = {"C1 rejection at VWAP": rej is not None}
     if rej is not None:
         bounce_high = max(d5.highs[max(rej - 6, 0):rej]) if rej else 0.0
-        sma = sum(d5.volumes[rej - 17:rej]) / 17
+        prior = sorted(d5.volumes[rej - 17:rej])
+        sma, median = sum(prior) / 17, prior[8]
+        vol = d5.volumes[rej]
+        grade = "A" if vol > sma else ("B" if vol > median else "C")
         rej_close_t = d5.timestamps[rej] / 1000 + 300
         c["C2 lower high"] = d5.highs[rej] < bounce_high and d5.highs[rej] < fvg_bottom
         brk = [(t, cl) for t, cl in closes15 if t > rej_close_t and cl < cfg["bos_15m"]]
         c["C3 15m close below " + str(cfg["bos_15m"])] = bool(brk)
-        c["C4 rejection volume > SMA17"] = d5.volumes[rej] > sma
         c["C5 no 5m close above " + str(fvg_bottom)] = all(x <= fvg_bottom for x in d5.closes[rej:])
         detail = (f"rejection 5m {utc(d5.timestamps[rej] / 1000)}: high {d5.highs[rej]:.4f} close {d5.closes[rej]:.4f} "
-                  f"vol {d5.volumes[rej]:,.0f} vs SMA17 {sma:,.0f}; bounce high {bounce_high:.4f}")
+                  f"bounce high {bounce_high:.4f}\n"
+                  f"Volume grade {grade}: {vol:,.0f} vs SMA17 {sma:,.0f} (A) / median17 {median:,.0f} (B)")
         entry = brk[0][1] if brk else None
         entry_t = brk[0][0] if brk else None
     else:
-        for k in ("C2 lower high", "C3 15m close below " + str(cfg["bos_15m"]), "C4 rejection volume > SMA17",
+        for k in ("C2 lower high", "C3 15m close below " + str(cfg["bos_15m"]),
                   "C5 no 5m close above " + str(fvg_bottom)):
             c[k] = False
-        detail, entry, entry_t = "no 5m rejection candle at VWAP yet", None, None
+        detail, entry, entry_t, grade = "no 5m rejection candle at VWAP yet", None, None, None
     return {"checks": c, "all": all(c.values()) and not invalid, "invalid": invalid, "detail": detail,
-            "entry": entry, "entry_t": entry_t, "rej_t": d5.timestamps[rej] if rej is not None else None}
+            "entry": entry, "entry_t": entry_t, "grade": grade,
+            "fresh": entry_t is not None and time.time() - entry_t <= FRESH_S,
+            "rej_t": d5.timestamps[rej] if rej is not None else None}
 
 
 def levels(cfg: dict, entry: float, atr: float) -> str:
@@ -180,6 +190,7 @@ def watch(cfg: dict) -> None:
             if state.get("last_5m") != key5:
                 log(f"vwap {fx['vwap']:.4f} close {fx['d5'].closes[-1]:.4f} "
                     + " ".join(f"{n.split()[0]}={'Y' if ok else 'n'}" for n, ok in ev["checks"].items())
+                    + f" vol={ev['grade'] or '-'}"
                     + (f" INVALID: {ev['invalid']}" if ev["invalid"] else ""))
                 state["last_5m"] = key5
             if ev["invalid"] and "invalid" not in fired:
@@ -193,14 +204,20 @@ def watch(cfg: dict) -> None:
                 send("👀 XRP/USD 5m REJECTION at anchored VWAP (C1) -- heads-up only, not the trigger.\n\n"
                      + report(cfg, fx, ev))
                 fired["rejection"] = ev["rej_t"]
-            if ev["all"] and "met" not in fired:
-                send("🔴 XRP/USD BEARISH VWAP RETEST -- ALL 5 CONDITIONS MET (paper, advisory).\n"
+            if ev["all"] and not ev["fresh"] and fired.get("stale") != ev["rej_t"]:
+                log(f"conditions met but confirmed {utc(ev['entry_t'])} -- older than {FRESH_S}s, not alerted")
+                fired["stale"] = ev["rej_t"]
+            if ev["all"] and ev["fresh"] and fired.get("met") != ev["rej_t"]:
+                grade_txt = {"A": "A -- volume above its 17-bar average",
+                             "B": "B -- volume above the 17-bar median only (average inflated by an outlier)",
+                             "C": "C -- NO volume confirmation"}[ev["grade"]]
+                send(f"🔴 XRP/USD BEARISH VWAP RETEST -- CONDITIONS MET, volume grade {grade_txt} (paper, advisory).\n"
                      "NOTHING HAS BEEN SUBMITTED. Not a cdcx-qualified trade: 1H is ranging near its low and TP1 "
                      "sits below the 1H range low (1.3508) -- it needs a range breakdown.\n"
                      f"Stop uses {cfg['atr_mult']}x ATR (user-chosen; cdcx's protected default is 1.5x).\n\n"
                      + levels(cfg, ev["entry"], fx["atr5"]) + "\n\n" + report(cfg, fx, ev))
-                fired["met"] = time.time()
-                log(f"ALL MET entry {ev['entry']:.4f}")
+                fired["met"] = ev["rej_t"]
+                log(f"ALL MET entry {ev['entry']:.4f} grade {ev['grade']}")
             STATE.write_text(json.dumps(state, indent=2))
         except Exception:
             log("check failed:\n" + traceback.format_exc())
