@@ -1,0 +1,12 @@
+{
+  "plan": "XRP/USD bearish anchored-VWAP retest, 2026-10-14 (5m/15m), paper/advisory only",
+  "armed_utc": "2026-10-14T13:25:00Z",
+  "expires_utc": "2026-10-15T09:00:00Z",
+  "vwap_anchor_utc": "2026-10-13T00:00:00Z",
+  "bos_5m": 1.3615,
+  "bos_15m": 1.3607,
+  "fvg_bottom": 1.3646,
+  "invalidate_above": 1.369,
+  "atr_mult": 2.0,
+  "paper_equity": 980.0
+}

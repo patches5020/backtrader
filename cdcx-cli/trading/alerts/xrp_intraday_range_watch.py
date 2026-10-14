@@ -14,7 +14,8 @@ NEAR_BOUNDARY_FRACTION), the same range the 4-condition check uses
 where the range is. The range-BREAK levels are the plan's fixed boundaries from
 xrp_intraday_range_config.json, plus the 4H/1H references.
 
-Alerts (each once per visit; re-armed when price returns to the middle of the range):
+Alerts (each once per visit; a side re-arms when a 5m close crosses back past the midpoint of the
+range as it was when that side's alert fired -- the live range moving can't re-arm it):
   EDGE REACHED   a closed 5m bar traded into the long or short zone
   SETUP 4/4      a closed 30m candle passes all 4 ranging conditions on that side
   RANGE BREAK    a 30m close beyond the plan range high/low -> stand aside, re-run 1H/4H/1D/1W
@@ -107,8 +108,7 @@ def fetch(ex=None) -> dict:
 def zones(vp) -> dict:
     """Edge zones from the live cdcx 30m range: the outer NEAR_BOUNDARY_FRACTION on each side."""
     edge = (vp.vah - vp.val) * ranging_strategy.NEAR_BOUNDARY_FRACTION
-    return {"long": (vp.val, vp.val + edge), "short": (vp.vah - edge, vp.vah),
-            "middle": (vp.val + 2 * edge, vp.vah - 2 * edge)}
+    return {"long": (vp.val, vp.val + edge), "short": (vp.vah - edge, vp.vah), "mid": (vp.val + vp.vah) / 2}
 
 
 def zone_of(z: dict, high: float, low: float) -> str | None:
@@ -145,10 +145,17 @@ def check(cfg: dict, state: dict, fx: dict) -> list[str]:
     c30 = d30.closes[-1]
     z = zones(fx["vp"])
 
-    # back in the middle of the live range -> re-arm the per-visit alerts
-    if state.get("last_5m") != bar5 and z["middle"][0] <= d5.closes[-1] <= z["middle"][1]:
-        for k in ("edge_long", "edge_short", "setup_long", "setup_short"):
-            fired.pop(k, None)
+    # A side re-arms only once a 5m close crosses back past the midpoint of the range AS IT WAS when that
+    # side's alert fired. (Re-arming on the live range's middle let a shifting range re-fire the same visit:
+    # LONG edge twice, 12:35Z and 13:00Z on 2026-10-14.)
+    rearm = state.setdefault("rearm_at", {})
+    if state.get("last_5m") != bar5:
+        c5 = d5.closes[-1]
+        for side, back in (("long", lambda m: c5 >= m), ("short", lambda m: c5 <= m)):
+            if any(f"{k}_{side}" in fired for k in ("edge", "setup")) and back(rearm.get(side, z["mid"])):
+                fired.pop(f"edge_{side}", None)
+                fired.pop(f"setup_{side}", None)
+                rearm.pop(side, None)
 
     if state.get("last_5m") != bar5:
         side = zone_of(z, d5.highs[-1], d5.lows[-1])
@@ -161,6 +168,7 @@ def check(cfg: dict, state: dict, fx: dict) -> list[str]:
                 "NOT a trade yet: wait for a CLOSED 30m candle that passes all 4 range conditions, "
                 "then time the entry on 5m. No trade has been placed.\n\n" + summary(cfg, fx))
             fired[f"edge_{side}"] = time.time()
+            rearm.setdefault(side, z["mid"])
         state["last_5m"] = bar5
 
     if state.get("last_30m") != bar30:
@@ -173,6 +181,7 @@ def check(cfg: dict, state: dict, fx: dict) -> list[str]:
                 "entry/stop (1.5x ATR 30m)/TP1 POC/TP2 opposite edge, require R:R >= 1:2 to TP2, cap notional "
                 "at paper equity, confirm on 5m.\n\n" + summary(cfg, fx))
             fired[f"setup_{s.direction}"] = time.time()
+            rearm.setdefault(s.direction, z["mid"])
         if c30 > cfg["range_high"] and "break_up" not in fired:
             out.append(
                 f"⬆️ XRP/USD RANGE BREAK UP: 30m close {c30:.4f} above {cfg['range_high']}.\n"
