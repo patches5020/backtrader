@@ -4,6 +4,9 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-14
+- `4a8a609` Intraday range watcher: no duplicate edge alerts (re-arm at the midpoint stored when the alert fired).
+  New alert-only XRP bearish anchored-VWAP retest watcher (5 conditions on closed 5m/15m; levels use a user-chosen
+  2.0x ATR stop for this paper calculation). Protected params: unchanged.
 - `a36e433` Range mode (`--execute` + preview, cdcx-equity preview) computes range/RSI/rejection on **closed candles only**
   (`cli._closed_bars`); one forming 30m bar had moved XRP's VAH 1.3833 -> 1.3748. Execution-gate input changed WITH user
   approval; stop/TPs/sizing/trend path unchanged. Plus alert-only XRP intraday range watcher (expires 2026-10-15 09:00 UTC).
