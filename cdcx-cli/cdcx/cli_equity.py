@@ -437,13 +437,14 @@ def _print_range_preview(results: dict[str, object], raw_data_by_tf: dict[str, o
     requests. cdcx-equity's --execute has no range mode, so this is advisory only:
     no journal entry, no paper trade."""
     from . import ranging_strategy
-    from .cli import _range_inputs_from_data
+    from .cli import _closed_bars, _range_inputs_from_data
 
     for tf, signal in results.items():
         if signal is None or signal.regime.regime != "ranging" or tf not in raw_data_by_tf:
             continue
         try:
-            _, _, _, rsi_series, vp_result, pattern_matches = _range_inputs_from_data(raw_data_by_tf[tf])
+            _, _, _, rsi_series, vp_result, pattern_matches = _range_inputs_from_data(
+                _closed_bars(raw_data_by_tf[tf], tf))
         except Exception as exc:
             print(f"(range setup preview for {tf} unavailable: {exc})", file=sys.stderr)
             continue

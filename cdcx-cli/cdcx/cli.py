@@ -664,11 +664,27 @@ def _range_setup_inputs(symbol: str, range_tf: str, limit: int):
     from .exchange.cryptocom import CryptoComExchange
 
     exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
-    return _range_inputs_from_data(exchange.fetch_ohlcv(symbol, timeframe=range_tf, limit=limit))
+    return _range_inputs_from_data(_closed_bars(exchange.fetch_ohlcv(symbol, timeframe=range_tf, limit=limit), range_tf))
+
+
+def _closed_bars(raw_data, timeframe: str):
+    """`raw_data` without its still-forming last candle. The range check reads closed
+    candles only: with the forming bar included, the 30m VAH moved 1.3833 -> 1.3748 within
+    one candle (XRP/USD, 2026-10-14), and its RSI/rejection pattern can still change."""
+    from dataclasses import replace
+    from . import no_trade_gate
+
+    market = getattr(raw_data, "market", no_trade_gate.MARKET_24X7)
+    if not no_trade_gate.last_bar_is_forming(raw_data.timestamps, timeframe, time.time(), market=market):
+        return raw_data
+    return replace(raw_data, timestamps=raw_data.timestamps[:-1], opens=raw_data.opens[:-1],
+                   highs=raw_data.highs[:-1], lows=raw_data.lows[:-1], closes=raw_data.closes[:-1],
+                   volumes=raw_data.volumes[:-1])
 
 
 def _range_inputs_from_data(raw_data):
-    """The range-setup inputs computed from already-fetched OHLCV (also used by cdcx-equity)."""
+    """The range-setup inputs computed from already-fetched OHLCV (also used by cdcx-equity).
+    Callers pass closed bars only (`_closed_bars`)."""
     from .indicators import atr_ema_variant1, adx as adx_module, rsi as rsi_module, volume_profile_fixed
 
     atr_series = atr_ema_variant1.calculate_atr(raw_data.highs, raw_data.lows, raw_data.closes)

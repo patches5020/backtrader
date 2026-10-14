@@ -1,0 +1,12 @@
+{
+  "plan": "XRP/USD intraday range plan 2026-10-14 (5m-1H), paper/advisory only",
+  "created_utc": "2026-10-14T09:00:00Z",
+  "expires_utc": "2026-10-15T09:00:00Z",
+  "range_low": 1.3522,
+  "range_high": 1.3833,
+  "poc": 1.37,
+  "accept_above": 1.3941,
+  "accept_below": 1.344,
+  "bear_trigger": 1.3176,
+  "note": "Edge zones and the re-arm middle are derived from cdcx's live 30m range each check; the levels here are the plan's fixed break/reference levels."
+}

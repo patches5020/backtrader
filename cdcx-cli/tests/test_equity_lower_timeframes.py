@@ -115,6 +115,7 @@ def test_equity_range_preview_uses_fetched_bars_and_writes_nothing(monkeypatch, 
     vp = SimpleNamespace(poc=769.4, vah=772.0, val=768.6)
     used = []
     monkeypatch.setattr(cli, "_range_inputs_from_data", lambda data: used.append(data) or (None, [], [], [50, 51], vp, []))
+    monkeypatch.setattr(cli, "_closed_bars", lambda data, tf: data)        # placeholder data has no timestamps
     for name in ("write_signal", "write_rejected", "write_simulated_order"):
         monkeypatch.setattr(journal, name, lambda *a, **k: pytest.fail("preview must not write the journal"))
     results = {"5m": _sig("ranging"), "1h": _sig("trending"), "4h": _sig("ranging")}
