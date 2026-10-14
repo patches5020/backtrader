@@ -3,6 +3,12 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-14
+- `a36e433` Range mode (`--execute` + preview, cdcx-equity preview) computes range/RSI/rejection on **closed candles only**
+  (`cli._closed_bars`); one forming 30m bar had moved XRP's VAH 1.3833 -> 1.3748. Execution-gate input changed WITH user
+  approval; stop/TPs/sizing/trend path unchanged. Plus alert-only XRP intraday range watcher (expires 2026-10-15 09:00 UTC).
+  Protected params: unchanged.
+
 ## 2026-10-10
 - `c0f5849` VP plans: calculated open-risk guard (remaining stop risk of all open trades + proposed <= 2% of equity,
   fail-closed, re-checked under the approval lock) and a real-path sizing test (cdcx sizing at 1% = $9.80 on $980,
