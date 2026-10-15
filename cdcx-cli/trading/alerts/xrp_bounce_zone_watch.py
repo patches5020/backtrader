@@ -114,6 +114,7 @@ def evaluate(cfg: dict, fx: dict) -> dict:
             "entry": entry, "entry_t": entry_t,
             "fresh": entry_t is not None and time.time() - entry_t <= FRESH_S,
             "rej_t": d5.timestamps[rej] if rej is not None else None,
+            "rej_high": d5.highs[rej] if rej is not None else None,
             "last_touch_t": d5.timestamps[touches[-1]] if touches else None}
 
 
@@ -182,7 +183,7 @@ def watch(cfg: dict) -> None:
                      "NOTHING HAS BEEN SUBMITTED. Not a cdcx-qualified trade: the bear VP plan still needs a "
                      "4H close < 1.3176 and its regime/confluence gates.\n"
                      f"Stop uses {cfg['atr_mult']}x ATR (user-chosen; cdcx's protected default is 1.5x).\n\n"
-                     + levels(cfg, ev["entry"], fx["atr5"]) + "\n\n" + report(cfg, fx, ev))
+                     + levels(cfg, ev["entry"], fx["atr5"], ev["rej_high"]) + "\n\n" + report(cfg, fx, ev))
                 fired["met"] = ev["rej_t"]
                 log(f"ALL MET entry {ev['entry']:.4f}")
             STATE.write_text(json.dumps(state, indent=2))
@@ -202,7 +203,7 @@ def main() -> int:
         ev = evaluate(cfg, fx)
         print(report(cfg, fx, ev))
         print()
-        print(levels(cfg, ev["entry"] or fx["d5"].closes[-1], fx["atr5"]))
+        print(levels(cfg, ev["entry"] or fx["d5"].closes[-1], fx["atr5"], ev["rej_high"]))
         return 0
     watch(cfg)
     return 0

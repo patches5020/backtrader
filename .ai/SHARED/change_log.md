@@ -3,6 +3,10 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-15
+- `2929de2` VWAP-retest and bounce-zone alerts add an ADVISORY structural stop (rejection high + 0.25 ATR) and flag an ATR
+  stop inside the tested zone; 2x ATR stop rule unchanged. Protected params: unchanged.
+
 ## 2026-10-14
 - `359f6ac` New alert-only XRP bounce-zone rejection watcher (1.3316-1.3385, closed 5m/15m, stale guard, expires
   2026-10-15 09:00 UTC) + autostart entry. Protected params: unchanged.

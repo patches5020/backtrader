@@ -50,6 +50,7 @@ TP_R = (2.2, 2.6, 3.2, 4.5)
 LOOKBACK_5M = 24          # how far back (2h) a rejection candle may be
 FRESH_S = 900             # alert only if the confirming 15m close is at most one 15m bar old
 DATA_FAIL_ALERT_AFTER = 3
+STRUCT_MARGIN_ATR = 0.25   # advisory structural stop = rejection high + this x ATR(5m)
 
 
 def log(msg: str) -> None:
@@ -136,10 +137,11 @@ def evaluate(cfg: dict, fx: dict) -> dict:
     return {"checks": c, "all": all(c.values()) and not invalid, "invalid": invalid, "detail": detail,
             "entry": entry, "entry_t": entry_t, "grade": grade,
             "fresh": entry_t is not None and time.time() - entry_t <= FRESH_S,
-            "rej_t": d5.timestamps[rej] if rej is not None else None}
+            "rej_t": d5.timestamps[rej] if rej is not None else None,
+            "rej_high": d5.highs[rej] if rej is not None else None}
 
 
-def levels(cfg: dict, entry: float, atr: float) -> str:
+def levels(cfg: dict, entry: float, atr: float, rej_high: float | None = None) -> str:
     r = cfg["atr_mult"] * atr
     rows = [f"Entry (15m close)  {entry:.4f}",
             f"ATR(5m, 11)        {atr:.6f}   x {cfg['atr_mult']} = R {r:.4f}",
@@ -151,6 +153,15 @@ def levels(cfg: dict, entry: float, atr: float) -> str:
     qty_cap = eq / entry
     rows.append(f"Size @ equity cap  {qty_cap:,.0f} XRP (~${eq:,.0f} notional) -> risk ${qty_cap * r:.2f} "
                 f"({qty_cap * r / eq * 100:.2f}%)")
+    if rej_high is not None:
+        # Advisory only (user-approved 2026-10-15): the ATR stop above stays the rule. Shown so alerts record
+        # whether the ATR stop sits below the rejection high, i.e. inside the tested zone.
+        s_stop = rej_high + STRUCT_MARGIN_ATR * atr
+        s_r = s_stop - entry
+        where = "BELOW the rejection high -- inside the tested zone" if entry + r < rej_high else "above the rejection high"
+        rows.append(f"Structural stop    {s_stop:.4f}   (rejection high {rej_high:.4f} + {STRUCT_MARGIN_ATR} ATR) "
+                    f"= {s_r / r:.2f}x the ATR stop distance -- ADVISORY, not the rule")
+        rows.append(f"ATR stop is {where}")
     return "\n".join(rows)
 
 
@@ -215,7 +226,7 @@ def watch(cfg: dict) -> None:
                      "NOTHING HAS BEEN SUBMITTED. Not a cdcx-qualified trade: 1H is ranging near its low and TP1 "
                      "sits below the 1H range low (1.3508) -- it needs a range breakdown.\n"
                      f"Stop uses {cfg['atr_mult']}x ATR (user-chosen; cdcx's protected default is 1.5x).\n\n"
-                     + levels(cfg, ev["entry"], fx["atr5"]) + "\n\n" + report(cfg, fx, ev))
+                     + levels(cfg, ev["entry"], fx["atr5"], ev["rej_high"]) + "\n\n" + report(cfg, fx, ev))
                 fired["met"] = ev["rej_t"]
                 log(f"ALL MET entry {ev['entry']:.4f} grade {ev['grade']}")
             STATE.write_text(json.dumps(state, indent=2))
@@ -235,7 +246,7 @@ def main() -> int:
         ev = evaluate(cfg, fx)
         print(report(cfg, fx, ev))
         print()
-        print(levels(cfg, ev["entry"] or fx["d5"].closes[-1], fx["atr5"]))
+        print(levels(cfg, ev["entry"] or fx["d5"].closes[-1], fx["atr5"], ev["rej_high"]))
         return 0
     watch(cfg)
     return 0
