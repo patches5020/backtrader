@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional, Sequence
 
 from . import regime as regime_module
+from .utils.color import colorize_vah, colorize_val
 from .indicators import atr_ema_variant1, fair_value_gap, volume_profile_fixed
 
 Condition = Literal["consolidation", "ranging", "trending", "transitional"]
@@ -58,8 +59,8 @@ FVG_LEVEL_PROXIMITY_ATR_MULTIPLE = 0.75
 @dataclass
 class StructureMap:
     poc: float                      # A -- WHITE
-    resistance: float                # C -- GREEN (VAH)
-    support: float                   # D -- RED (VAL)
+    resistance: float                # C -- RED (VAH)
+    support: float                   # D -- GREEN (VAL)
     fvgs: list[fair_value_gap.FVG]   # B
     condition: Condition              # E / F (+ trending/transitional passthrough)
     regime: "regime_module.RegimeResult"
@@ -242,11 +243,11 @@ def format_structure_map(name: str, s: StructureMap) -> str:
         "-" * 49,
         f"STRUCTURE — {name}".center(49),
         "-" * 49,
-        f"POC (white):         {s.poc:.6f}",
-        f"Resistance (green):  {s.resistance:.6f}",
-        f"Support (red):       {s.support:.6f}",
-        f"FVGs:                {len(s.fvgs)} total, {sum(1 for g in s.fvgs if not g.filled)} unfilled",
-        f"Condition:           {s.condition.upper()}",
+        f"POC (white):            {s.poc:.6f}",
+        colorize_vah(f"Resistance / VAH (red):   {s.resistance:.6f}"),
+        colorize_val(f"Support / VAL (green):  {s.support:.6f}"),
+        f"FVGs:                   {len(s.fvgs)} total, {sum(1 for g in s.fvgs if not g.filled)} unfilled",
+        f"Condition:              {s.condition.upper()}",
         "-" * 49,
     ]
     return "\n".join(lines)

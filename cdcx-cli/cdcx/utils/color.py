@@ -76,3 +76,18 @@ def colorize_regime(text: str, regime: str) -> str:
     if code is None:
         return text
     return colorize(text, code)
+
+
+# Volume-profile value-area edges (user's colour choice, 2026-10-15): VAH red
+# (value area high = resistance), VAL green (value area low = support). Same
+# TTY / NO_COLOR / FORCE_COLOR rules as everything else here.
+VAH_COLOR = RED
+VAL_COLOR = GREEN
+
+
+def colorize_vah(text: str) -> str:
+    return colorize(text, VAH_COLOR)
+
+
+def colorize_val(text: str) -> str:
+    return colorize(text, VAL_COLOR)

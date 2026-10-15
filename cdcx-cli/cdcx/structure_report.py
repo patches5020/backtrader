@@ -42,6 +42,7 @@ from . import regime as regime_module
 from . import vp_setup as vp_setup_module
 from .indicators import volume_profile_fixed, market_structure, fair_value_gap
 from .engine import _round_price  # same significant-figure price rounding engine.py itself uses
+from .utils.color import colorize_vah, colorize_val
 
 
 @dataclass
@@ -114,8 +115,8 @@ def format_structure_report(report: StructureReport) -> str:
     price, poc, vah, val = _round_price(report.price), _round_price(vp.poc), _round_price(vp.vah), _round_price(vp.val)
     lines.append(f"PRICE:  {price}")
     lines.append(f"POC:    {poc}")
-    lines.append(f"VAH:    {vah}   (value area high)")
-    lines.append(f"VAL:    {val}   (value area low)")
+    lines.append(colorize_vah(f"VAH:    {vah}   (value area high, red)"))
+    lines.append(colorize_val(f"VAL:    {val}   (value area low, green)"))
     lines.append(f"  -> price is {_price_location(report.price, vp.poc, vp.vah, vp.val)}")
     lines.append(vp_setup_module.format_vp_setup(report.vp_setup))
     lines.append("")
@@ -124,7 +125,7 @@ def format_structure_report(report: StructureReport) -> str:
         range_width = vp.vah - vp.val
         pct_through = ((report.price - vp.val) / range_width * 100) if range_width else 0.0
         lines.append("RANGE (market is classified RANGING):")
-        lines.append(f"  {val}  <---- VAL ... POC {poc} ... VAH ---->  {vah}")
+        lines.append(f"  {colorize_val(f'{val}  <---- VAL')} ... POC {poc} ... {colorize_vah(f'VAH ---->  {vah}')}")
         lines.append(f"  Price is {pct_through:.0f}% through the range (0% = VAL, 100% = VAH)")
         lines.append("")
     elif report.regime.regime == "transitional":
