@@ -4,7 +4,7 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-15
-- `2929de2` VWAP-retest and bounce-zone alerts add an ADVISORY structural stop (rejection high + 0.25 ATR) and flag an ATR
+- `b7996b0` VWAP-retest and bounce-zone alerts add an ADVISORY structural stop (rejection high + 0.25 ATR) and flag an ATR
   stop inside the tested zone; 2x ATR stop rule unchanged. Protected params: unchanged.
 
 ## 2026-10-14

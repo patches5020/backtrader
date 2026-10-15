@@ -1,4 +1,4 @@
-# Retest watchers: advisory structural stop (2026-10-15) -- commit 2929de2
+# Retest watchers: advisory structural stop (2026-10-15) -- commit b7996b0
 
 ## `cdcx-cli/trading/alerts/xrp_vwap_retest_watch.py` (`levels()`, shared) + `xrp_bounce_zone_watch.py`
 - Alerts and `--once` now add, after the 2x ATR levels:
