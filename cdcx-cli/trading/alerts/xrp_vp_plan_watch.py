@@ -51,6 +51,7 @@ import time
 import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from cdcx import engine, trade_manager, circuit_breaker
 from cdcx.confluence import evaluate_confluence
@@ -169,8 +170,23 @@ def iso(s: str) -> float:
     return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
 
 
-def utc(ts: float) -> str:
+LOCAL_TZ = ZoneInfo("America/Chicago")   # the user's time zone; shown next to UTC in messages
+
+
+def utc_only(ts: float) -> str:
     return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d %H:%MZ")
+
+
+def utc(ts: float) -> str:
+    """UTC plus the user's local (US Central) time, e.g. "2026-10-11 07:00Z = Oct 11 2:00 AM CDT"."""
+    local = datetime.fromtimestamp(ts, timezone.utc).astimezone(LOCAL_TZ)
+    hour = local.hour % 12 or 12
+    return f"{utc_only(ts)} = {local:%b} {local.day} {hour}:{local:%M %p %Z}"
+
+
+def when(s: str) -> str:
+    """Display form of a stored ISO-UTC string (config values stay pure UTC)."""
+    return utc(iso(s))
 
 
 def closed(d: OHLCV, tf: str) -> OHLCV:
@@ -247,8 +263,8 @@ def derive_levels(fx: dict) -> dict:
     hi, lo = highs[-1], lows[-1]  # most recent
     anchor_idx = max(hi.index, lo.index)
     return {
-        "swing_high": round(hi.price, DEC), "swing_high_utc": utc(d.timestamps[hi.index] / 1000),
-        "swing_low": round(lo.price, DEC), "swing_low_utc": utc(d.timestamps[lo.index] / 1000),
+        "swing_high": round(hi.price, DEC), "swing_high_utc": utc_only(d.timestamps[hi.index] / 1000),
+        "swing_low": round(lo.price, DEC), "swing_low_utc": utc_only(d.timestamps[lo.index] / 1000),
         "vwap_anchor_utc": datetime.fromtimestamp(d.timestamps[anchor_idx] / 1000, timezone.utc)
                                    .strftime("%Y-%m-%dT%H:%M:%SZ"),
         "price_at_arming": price,
@@ -270,7 +286,7 @@ def arm(days: int = 7) -> dict:
     CONFIG.write_text(json.dumps(cfg, indent=2) + "\n")
     save_state({"plans": {}, "data_failures": 0})  # fresh arming: no approvals carried over
     log(f"armed {cfg['arming_id']}: swing high {lv['swing_high']} / low {lv['swing_low']}, "
-        f"VWAP anchor {lv['vwap_anchor_utc']}, expires {cfg['expires_utc']}")
+        f"VWAP anchor {when(lv['vwap_anchor_utc'])}, expires {when(cfg['expires_utc'])}")
     return cfg
 
 
@@ -342,8 +358,11 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
     chk = evaluate_entry_checklist(sig[entry_tf], side, risk_pct=risk_pct(cfg), symbol=SYMBOL, atr_series=atr_series)
     failed = [it.name for it in getattr(chk, "items", []) if not getattr(it, "passed", True)
               and not getattr(it, "advisory", False)]
-    reqs.append(("R3", "CHECKLIST: cdcx entry checklist passes", r2 and chk.all_passed,
-                 "all passed" if chk.all_passed else "failing: " + (", ".join(failed[:4]) or "see cdcx")))
+    r3_detail = "all passed" if chk.all_passed else "failing: " + (", ".join(failed[:4]) or "see cdcx")
+    if not r2:   # R3 only counts when the regime gate (R2) passes; say so instead of a bare "all passed"
+        r3_detail = ("checklist passed, but blocked by R2 (regime)" if chk.all_passed
+                     else r3_detail + " (also blocked by R2 regime)")
+    reqs.append(("R3", "CHECKLIST: cdcx entry checklist passes", r2 and chk.all_passed, r3_detail))
 
     # R4 ATR confirms
     atr_lbl = {tf: sig[tf].labels.get("atr_expansion", "n/a") for tf in GATE_TFS}
@@ -377,7 +396,7 @@ def evaluate(cfg: dict, side: str, fx: dict) -> dict:
     # R7 anchored VWAP
     vwap = anchored_vwap(data["1h_long"], iso(lv["vwap_anchor_utc"]))
     reqs.append(("R7", f"VWAP: 4H close {'above' if up else 'below'} anchored VWAP", (c4 > vwap) if up else (c4 < vwap),
-                 f"VWAP {vwap:.{DEC}f} anchored {lv['vwap_anchor_utc']}"))
+                 f"VWAP {vwap:.{DEC}f} anchored {when(lv['vwap_anchor_utc'])}"))
 
     # R8 Volume profile acceptance
     vp1 = (sig["1h"].vp_setup_type, sig["1h"].vp_setup_direction)
@@ -469,7 +488,7 @@ def table(pid: str, cfg: dict, res: dict, state: dict) -> str:
     tps = p.get("take_profits", {})
     lines = [f"{'🟢 BULLISH' if res['side'] == 'long' else '🔴 BEARISH'} {pid} (arming {cfg['arming_id']}) -- "
              f"{met}/12 met",
-             f"Expires {cfg['expires_utc']} | approval: {'USED ' + utc(approved) if approved else 'not given'}"
+             f"Expires {when(cfg['expires_utc'])} | approval: {'USED ' + utc(approved) if approved else 'not given'}"
              + (" | INVALIDATED" if res["invalidated"] else "")]
     for key, name, ok, detail in res["reqs"]:
         lines.append(f"{'PASS' if ok else 'FAIL'} {key} {name}\n       {detail}")
@@ -521,7 +540,7 @@ def once(cfg: dict) -> str:
     except Exception as exc:
         return "\n\n".join(unknown_table(pid, str(exc)) for pid in PLANS)
     out = [f"{SYMBOL} VP PAPER-TRADE PLANS -- {utc(time.time())}", header(fx),
-           f"Levels (armed {cfg['armed_utc']} from closed 4H swings): swing high {cfg['levels']['swing_high']} "
+           f"Levels (armed {when(cfg['armed_utc'])} from closed 4H swings): swing high {cfg['levels']['swing_high']} "
            f"({cfg['levels']['swing_high_utc']}), swing low {cfg['levels']['swing_low']} ({cfg['levels']['swing_low_utc']})"]
     for pid, side in PLANS.items():
         res = evaluate(cfg, side, fx)
@@ -572,7 +591,7 @@ def watch(cfg: dict) -> None:
                          f"Risk ${p['risk_usd']} ({risk_pct(cfg):g}% of validated paper equity). Entry, stop and TPs are computed by cdcx "
                          f"from the LIVE price at approval -- the levels below are previews, not orders.\n"
                          f"Invalidation: 4H close {'below' if side == 'long' else 'above'} {res['invalidation']} | "
-                         f"expires {cfg['expires_utc']}\n"
+                         f"expires {when(cfg['expires_utc'])}\n"
                          f"Approve: tell Claude Code \"approve {pid}\", or run\n"
                          f"  python trading/alerts/xrp_vp_plan_watch.py --approve {pid}\n"
                          "Approval re-validates everything; paper only, never --live.\n\n"
@@ -622,7 +641,7 @@ def _approve_locked(cfg: dict, pid: str) -> int:
     if "armed_utc" not in cfg:
         return refuse("plans are not armed (run --arm)")
     if time.time() >= iso(cfg["expires_utc"]):
-        return refuse(f"plan expired at {cfg['expires_utc']} (re-arm with --arm)")
+        return refuse(f"plan expired at {when(cfg['expires_utc'])} (re-arm with --arm)")
     if ps["fired"].get("approved"):
         return refuse(f"already approved at {utc(ps['fired']['approved'])} for arming {cfg['arming_id']} "
                       "(one execution per arming; re-arm with --arm)")
@@ -649,7 +668,7 @@ def _approve_locked(cfg: dict, pid: str) -> int:
     # Final re-checks immediately before execution (state re-read from disk, not the copy loaded above).
     now = time.time()
     if now >= iso(cfg["expires_utc"]):
-        return refuse(f"plan expired at {cfg['expires_utc']} during approval")
+        return refuse(f"plan expired at {when(cfg['expires_utc'])} during approval")
     if now - started > MAX_APPROVAL_S:
         return refuse(f"approval took {now - started:.0f}s (> {MAX_APPROVAL_S}s) -- requirements are stale, re-run")
     if now >= res["bar_1h"] / 1000 + 2 * TF_SECS["1h"]:
