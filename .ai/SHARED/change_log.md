@@ -4,6 +4,7 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-16
+- `a04729c` Prev-day AVWAP/AFVP phase 3: condition, VP-01..05 setups, one-vote evidence families; analysis only, not wired in. Protected params: unchanged.
 - `fe57e3c` Anchored VWAP (1/2/3 sigma, matches TradingView) + frozen previous-day volume profile; analysis only, not wired in. Protected params: unchanged.
 - `d01b892` VP plan watcher shows US Central time; R3 notes an R2 block; XRP VP plans re-armed (expire 2026-10-23); one-shot XLM re-arm after 2026-10-17 15:22Z. Protected params: unchanged.
 
