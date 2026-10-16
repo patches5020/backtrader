@@ -42,6 +42,6 @@ the user's decision after the test.
   TV POC 1.3071 / VAH 1.3310 / VAL 1.2888; cdcx 1H 24 rows 1.3070 / 1.3302 / 1.2896; 5m 400 rows 1.3061 / 1.3318 /
   1.2912. POC within 0.001, VAH/VAL within ~0.001-0.003 (about one 24-row bucket). cdcx 1H at 400 rows is unstable
   (POC 1.3365): 1H bars are too coarse for 400 rows. TV builds the profile from finer intrabar data.
-- **Open:** frozen previous-day profile (cdcx 5m: POC 1.3077 / VAH 1.3263 / VAL 1.2944) has no TV counterpart on the
-  chart; a Fixed Range VP from 2026-10-15 00:00 to 2026-10-16 00:00 UTC (not extended) would check it. Tolerance
-  to accept: about one bucket. No code change proposed.
+- **Frozen previous-day profile (closed 2026-10-16 23:05Z):** TV Fixed Range VP 2026-10-15 00:00 -> 23:00 UTC bar,
+  not extended, 400 rows, 70% VA: POC 1.3079 / VAH 1.3252 / VAL 1.2924. cdcx 1H (24 rows): 1.30765 / 1.32626 /
+  1.2917; cdcx 5m: 1.3077 / 1.3263 / 1.2944. All within one 24-row bucket (~0.0027). Accepted; no code change.
