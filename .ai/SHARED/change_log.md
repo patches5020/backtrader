@@ -3,6 +3,9 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-16
+- `d01b892` VP plan watcher shows US Central time; R3 notes an R2 block; XRP VP plans re-armed (expire 2026-10-23); one-shot XLM re-arm after 2026-10-17 15:22Z. Protected params: unchanged.
+
 ## 2026-10-15
 - `4ad0d88` cdcx-ai / cdcx-equity display: VAH red, VAL green (STRUCTURE map labels were inverted). Display only.
   Protected params: unchanged.
