@@ -23,3 +23,25 @@ the user's decision after the test.
   (commit b7996b0).
 - **Test:** across many alerts, compare outcomes with the ATR stop vs. the structural stop at equal dollar risk
   (the wider stop means a smaller position), after fees and slippage. The 2x ATR rule stays until then.
+
+## RQ3 — VP-04 1H (prior-day value-area breakout) after costs (raised 2026-10-16)
+- **Tested:** `cdcx/backtest/vwap_vp_htf_followup.py` (commit a6486cd). Walk-forward, protected trade model, 7.5 + 2 bps
+  per side; test period 2025-06-01 -> 2026-05-30.
+- **Result:** unfiltered, pooled XRP + XLM: +0.034 R/trade, bootstrap 95% CI [-0.115, +0.186], P(>0) 67%, n = 463
+  (XRP CI [-0.194, +0.234], XLM CI [-0.159, +0.261]). With cdcx's 2-of-4 HTF filter: n = 10 (XRP) / 5 (XLM),
+  CIs ~2-3 R wide -> no information. All 5m/15m setups (phase 5) were net-negative out of sample.
+- **Status:** not tradable. `--vwap-vp` stays display only. Ruling zero out at this edge would take roughly 10,000+
+  trades; reopen only with a new, pre-registered hypothesis tested on unseen data.
+
+## RQ4 — Previous-day AVWAP / AFVP parity with TradingView (checked 2026-10-16 22:45Z, XRP/USD 1H)
+- **AVWAP** (anchor 2026-10-15 00:00 UTC, ohlc4, Standard Deviation bands, forming bar included like TV):
+  TV 1.316547 / +-1 sigma 1.301170-1.331924; cdcx (1H bars) 1.316549 / 1.301172-1.331926. Match (<= 0.000002).
+  On 5m bars cdcx gives 1.316779 / sigma 0.016020: the bar size changes the result, so compare on the chart's timeframe.
+- **AFVP**: the chart's Fixed Range VP is anchored 2026-10-15 00:00 UTC and extends to now (400 rows, 70% VA), so it
+  is the anchored profile, not cdcx's frozen previous-day profile. On that same window:
+  TV POC 1.3071 / VAH 1.3310 / VAL 1.2888; cdcx 1H 24 rows 1.3070 / 1.3302 / 1.2896; 5m 400 rows 1.3061 / 1.3318 /
+  1.2912. POC within 0.001, VAH/VAL within ~0.001-0.003 (about one 24-row bucket). cdcx 1H at 400 rows is unstable
+  (POC 1.3365): 1H bars are too coarse for 400 rows. TV builds the profile from finer intrabar data.
+- **Open:** frozen previous-day profile (cdcx 5m: POC 1.3077 / VAH 1.3263 / VAL 1.2944) has no TV counterpart on the
+  chart; a Fixed Range VP from 2026-10-15 00:00 to 2026-10-16 00:00 UTC (not extended) would check it. Tolerance
+  to accept: about one bucket. No code change proposed.
