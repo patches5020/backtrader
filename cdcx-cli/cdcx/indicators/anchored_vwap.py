@@ -51,6 +51,8 @@ class AnchoredVWAP:
     last_bar_ts: float                # open time (unix seconds) of the last bar included
     bands: dict[int, tuple[float, float]] = field(default_factory=dict)  # k -> (lower, upper)
     series: list[float] = field(default_factory=list)                    # VWAP after each included bar
+    sigma_series: list[float] = field(default_factory=list)              # sigma after each included bar --
+    # use these (not the final vwap/sigma) to judge a PAST bar against the bands as they stood then
 
 
 def _seconds(ts: float) -> float:
@@ -73,7 +75,7 @@ def anchored_vwap(
         return None   # history does not reach the anchor
 
     pv = pv2 = vol = 0.0
-    used, last_ts, series = 0, None, []
+    used, last_ts, series, sigmas = 0, None, [], []
     for t, o, h, l, c, v in zip(timestamps, opens, highs, lows, closes, volumes):
         ts = _seconds(t)
         if ts < anchor:
@@ -84,7 +86,12 @@ def anchored_vwap(
         vol += v
         used += 1
         last_ts = ts
-        series.append(pv / vol if vol > 0 else float("nan"))
+        if vol > 0:
+            series.append(pv / vol)
+            sigmas.append(math.sqrt(max(pv2 / vol - (pv / vol) ** 2, 0.0)))
+        else:
+            series.append(float("nan"))
+            sigmas.append(float("nan"))
     if used == 0 or vol <= 0:
         return None
 
@@ -93,7 +100,7 @@ def anchored_vwap(
     return AnchoredVWAP(
         anchor_ts=anchor, source=source, vwap=vwap, sigma=sigma, bars_used=used, last_bar_ts=last_ts,
         bands={k: (vwap - k * sigma, vwap + k * sigma) for k in band_mults},
-        series=series,
+        series=series, sigma_series=sigmas,
     )
 
 
