@@ -4,6 +4,7 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-16
+- `0c2652e` Prev-day AVWAP/AFVP phase 5 research harness; all setups net-negative OOS (XRP/XLM 5m/15m). Research only. Protected params: unchanged.
 - `6a29dd6` --vwap-vp section in cdcx-ai + cdcx-equity (analysis only, off by default) and POC yellow. Protected params: unchanged.
 - `a04729c` Prev-day AVWAP/AFVP phase 3: condition, VP-01..05 setups, one-vote evidence families; analysis only, not wired in. Protected params: unchanged.
 - `fe57e3c` Anchored VWAP (1/2/3 sigma, matches TradingView) + frozen previous-day volume profile; analysis only, not wired in. Protected params: unchanged.
