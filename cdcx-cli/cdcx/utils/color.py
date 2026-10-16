@@ -91,3 +91,11 @@ def colorize_vah(text: str) -> str:
 
 def colorize_val(text: str) -> str:
     return colorize(text, VAL_COLOR)
+
+
+# Point of Control (user's colour choice, 2026-10-16): yellow.
+POC_COLOR = YELLOW
+
+
+def colorize_poc(text: str) -> str:
+    return colorize(text, POC_COLOR)

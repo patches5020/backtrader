@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional, Sequence
 
 from . import regime as regime_module
-from .utils.color import colorize_vah, colorize_val
+from .utils.color import colorize_vah, colorize_poc, colorize_val
 from .indicators import atr_ema_variant1, fair_value_gap, volume_profile_fixed
 
 Condition = Literal["consolidation", "ranging", "trending", "transitional"]
@@ -243,7 +243,7 @@ def format_structure_map(name: str, s: StructureMap) -> str:
         "-" * 49,
         f"STRUCTURE — {name}".center(49),
         "-" * 49,
-        f"POC (white):            {s.poc:.6f}",
+        colorize_poc(f"POC (yellow):           {s.poc:.6f}"),
         colorize_vah(f"Resistance / VAH (red):   {s.resistance:.6f}"),
         colorize_val(f"Support / VAL (green):  {s.support:.6f}"),
         f"FVGs:                   {len(s.fvgs)} total, {sum(1 for g in s.fvgs if not g.filled)} unfilled",

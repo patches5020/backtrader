@@ -51,9 +51,11 @@ VP-02, VP-05 and Fibonacci are context only (no vote).
 Qualification:
     UNKNOWN    prior-day levels unavailable (missing/stale data)
     CONFLICT   families vote both ways
-    QUALIFIED  >= 3 families agree incl. structure, none oppose, AND the
-               caller confirmed 2+ non-transitional higher timeframes agree
-               (htf_aligned=True; None = not evaluated -> cannot qualify)
+    QUALIFIED  >= 3 families agree incl. structure, none oppose, AND cdcx's
+               own 2-of-4 confluence (1H/4H/1D/1W, transitional timeframes
+               excluded -- the same filter --execute uses) points the same way
+               (htf = "bullish"/"bearish"; "none" = no agreement; None = not
+               evaluated -> cannot qualify)
     CANDIDATE  >= 2 families agree, none oppose
     NONE       otherwise
 """
@@ -65,7 +67,9 @@ from typing import Optional
 
 from .. import bos_state as bos_state_module
 from ..indicators import fair_value_gap, market_structure
-from .prev_day import PrevDayLevels
+from ..confluence import ALLOWED_TIMEFRAMES, evaluate_confluence
+from ..utils.color import colorize_poc, colorize_vah, colorize_val
+from .prev_day import PrevDayLevels, prev_day_levels
 
 RULESET_VERSION = "vwap-vp-1"
 SLOPE_BARS = 12
@@ -103,6 +107,8 @@ class VwapVpResult:
     qualification: str = "UNKNOWN"
     qualification_direction: Optional[str] = None
     qualification_reason: str = ""
+    htf: Optional[str] = None                    # "bullish" / "bearish" / "none" / None (not evaluated)
+    htf_detail: str = ""
     execution: str = "NOT AUTHORIZED (analysis only)"
     ruleset_version: str = RULESET_VERSION
 
@@ -234,9 +240,9 @@ def _exhaustion(levels, h, l, c, vw, sg) -> Setup:
     return Setup("VP-05", name, "NONE", None, f"no +/-2 sigma touch in the last {REACTION_BARS} bars")
 
 
-def classify(levels: PrevDayLevels, data, htf_aligned: Optional[bool] = None) -> VwapVpResult:
+def classify(levels: PrevDayLevels, data, htf: Optional[str] = None, htf_detail: str = "") -> VwapVpResult:
     """Condition, setups and evidence from prev_day_levels() output and the SAME OHLCV series."""
-    out = VwapVpResult(status="UNKNOWN")
+    out = VwapVpResult(status="UNKNOWN", htf=htf, htf_detail=htf_detail)
     if levels.status != "OK" or levels.avwap is None:
         out.reasons = ["prior-day levels unavailable: " + "; ".join(levels.reasons or ["unknown"])]
         out.qualification_reason = out.reasons[0]
@@ -296,30 +302,57 @@ def classify(levels: PrevDayLevels, data, htf_aligned: Optional[bool] = None) ->
                            if gaps else "no unfilled FVG formed today")
     out.families, out.family_detail = fam, det
 
-    out.qualification, out.qualification_direction, out.qualification_reason = qualify(fam, htf_aligned)
+    out.qualification, out.qualification_direction, out.qualification_reason = qualify(fam, htf)
     return out
 
 
-def qualify(families: dict[str, Optional[str]], htf_aligned: Optional[bool]) -> tuple[str, Optional[str], str]:
+def qualify(families: dict[str, Optional[str]], htf: Optional[str]) -> tuple[str, Optional[str], str]:
     """(qualification, direction, reason) from the family votes -- see the module docstring."""
     bull = [k for k, v in families.items() if v == "bullish"]
     bear = [k for k, v in families.items() if v == "bearish"]
     if bull and bear:
         return "CONFLICT", None, f"bullish: {', '.join(bull)} vs bearish: {', '.join(bear)}"
     agree, d = (bull, "bullish") if bull else (bear, "bearish")
-    if len(agree) >= 3 and "structure" in agree and htf_aligned is True:
-        return "QUALIFIED", d, f"{len(agree)} families agree ({', '.join(agree)}) and higher timeframes align"
+    if len(agree) >= 3 and "structure" in agree and htf == d:
+        return "QUALIFIED", d, f"{len(agree)} families agree ({', '.join(agree)}) and cdcx confluence is {d}"
     if len(agree) >= 2:
         missing = []
         if len(agree) < 3 or "structure" not in agree:
             missing.append("3 families incl. structure")
-        if htf_aligned is not True:
-            missing.append("2+ aligned non-transitional higher timeframes"
-                           + (" (not evaluated)" if htf_aligned is None else ""))
+        if htf != d:
+            missing.append("cdcx 2-of-4 confluence " + {None: "(not evaluated)", "none": "(none right now)"}.get(
+                htf, f"(currently {htf})") + f" to be {d}")
         return "CANDIDATE", d, f"{', '.join(agree)} agree; still needs {' and '.join(missing)}"
     if agree:
         return "NONE", None, "one family only: " + agree[0]
     return "NONE", None, "no family has a directional vote"
+
+
+def htf_direction(results: dict) -> tuple[str, str]:
+    """cdcx's own higher-timeframe confluence from a run's per-timeframe signals, with the SAME
+    filter as cli._handle_execute / cli_equity._handle_execute_confluence (transitional timeframes
+    excluded, only 1H/4H/1D/1W count). Returns ("bullish"|"bearish"|"none", label)."""
+    signals = {tf: s.signal for tf, s in results.items()
+               if s is not None and getattr(s, "regime", None) is not None and s.regime.regime != "transitional"}
+    counted = [tf for tf in signals if tf in ALLOWED_TIMEFRAMES]
+    if len(counted) < 2:
+        return "none", f"{len(counted)} non-transitional timeframe(s) of 1H/4H/1D/1W -- need 2"
+    conf = evaluate_confluence(signals)
+    if conf.should_execute:
+        return ("bullish" if conf.direction == "long" else "bearish"), conf.label
+    return "none", conf.label
+
+
+def build_section(symbol: str, data, timeframe: str, results: Optional[dict] = None,
+                  now: Optional[float] = None) -> str:
+    """The whole printable section from one intraday OHLCV series; never raises (errors -> UNKNOWN)."""
+    try:
+        lv = prev_day_levels(data, timeframe, now=now)
+        htf, detail = htf_direction(results) if results is not None else (None, "")
+        res = classify(lv, data, htf=htf, htf_detail=detail)
+        return format_vwap_vp(symbol, timeframe, lv, res, data.closes[-1])
+    except Exception as exc:   # analysis only: a failure here must never break the report
+        return f"PREV-DAY AVWAP + AFVP -- {symbol} {timeframe}: UNKNOWN ({exc})"
 
 
 def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: VwapVpResult, price: float) -> str:
@@ -334,7 +367,8 @@ def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: Vwap
     a = levels.avwap
     lines += [
         f"Prior session {f(levels.session_start)} -> {f(levels.session_end)} ({levels.session_bars} bars), frozen:",
-        f"  POC {levels.poc:.6g} | VAH {levels.vah:.6g} | VAL {levels.val:.6g} | HVN {levels.hvn:.6g} | LVN {levels.lvn:.6g}",
+        f"  {colorize_poc(f'POC {levels.poc:.6g}')} | {colorize_vah(f'VAH {levels.vah:.6g}')} | "
+        f"{colorize_val(f'VAL {levels.val:.6g}')} | HVN {levels.hvn:.6g} | LVN {levels.lvn:.6g}",
         f"AVWAP from {f(a.anchor_ts)} ({a.source}): {a.vwap:.6g}  sigma {a.sigma:.6g}  (last closed bar {f(a.last_bar_ts)})",
         "  " + " | ".join(f"+/-{k}: {lo:.6g} / {hi:.6g}" for k, (lo, hi) in a.bands.items()),
         f"Price {price:.6g} = {res.z:+.2f} sigma | Condition: {res.condition}"
@@ -346,6 +380,8 @@ def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: Vwap
     lines.append("")
     for k in ("vwap", "volume", "structure", "price_action"):
         lines.append(f"  {k:<13} {res.families.get(k) or '--':<9} {res.family_detail.get(k, '')}")
+    if res.htf is not None:
+        lines.append(f"  {'cdcx HTF':<13} {res.htf:<9} {res.htf_detail}")
     lines += ["", f"DECISION: {res.qualification}"
               + (f" ({res.qualification_direction})" if res.qualification_direction else "")
               + f" -- {res.qualification_reason}", f"Execution: {res.execution}", bar]

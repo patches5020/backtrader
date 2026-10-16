@@ -250,6 +250,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="With --backtrader: show a backtrader plot after the run.",
     )
     parser.add_argument(
+        "--vwap-vp", nargs="?", const="5m", default=None, metavar="TF", dest="vwap_vp",
+        help="Analysis only: append the PREV-DAY AVWAP + AFVP section -- the previous UTC day's frozen "
+             "volume profile (POC/VAH/VAL/HVN/LVN), an anchored VWAP from that day's open with +/-1/2/3 "
+             "sigma bands, market condition, setups VP-01..VP-05 and grouped evidence. TF is the intraday "
+             "timeframe it reads (default 5m). Never read by confluence, the checklist, sizing or "
+             "--execute; never opens a trade.",
+    )
+    parser.add_argument(
         "--structure", action="store_true",
         help="Merge the POC/FVG/volume structure system into the same run's report: "
              "any requested timeframe that is one of 1w/1d/4h/1h gets its structure "
@@ -496,6 +504,27 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict, timefra
         symbol, avp_rejection.build_avp_by_tf(symbol, {tf: cache[tf][1] for tf in avp_tfs}, timeframes=avp_tfs)))
 
     return True
+
+
+def _print_vwap_vp(symbol: str, timeframe: str, results: dict | None) -> None:
+    """--vwap-vp: fetch `timeframe` bars covering the previous UTC day + today and print the section.
+    Analysis only -- see cdcx/volume_profile/vwap_confluence.py."""
+    from .exchange.cryptocom import CryptoComExchange
+    from .no_trade_gate import timeframe_to_seconds
+    from .volume_profile.vwap_confluence import build_section
+
+    tf_s = timeframe_to_seconds(timeframe) or 0
+    print()
+    if not tf_s or tf_s >= 86400:
+        print(f"PREV-DAY AVWAP + AFVP: UNKNOWN (--vwap-vp needs an intraday timeframe, got {timeframe!r})")
+        return
+    try:
+        exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
+        data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=int(2 * 86400 / tf_s) + 10)
+    except Exception as exc:
+        print(f"PREV-DAY AVWAP + AFVP -- {symbol} {timeframe}: UNKNOWN (data unavailable: {exc})")
+        return
+    print(build_section(symbol, data, timeframe, results))
 
 
 def _handle_backtrader(args: argparse.Namespace) -> int:
@@ -1535,6 +1564,8 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(mtf_context.format_atr_alignment(mtf_context.build_atr_alignment(results)))
         print(mtf_context.format_vp_hierarchy(mtf_context.build_vp_hierarchy(results)))
+        if args.vwap_vp:
+            _print_vwap_vp(args.symbol, args.vwap_vp, results)
 
         if args.execute:
             result = _handle_execute(
@@ -1573,6 +1604,8 @@ def main(argv: list[str] | None = None) -> int:
         _print_merged_structure_block(args.symbol, timeframe, args.limit, structure_cache)
     if args.structure or args.structure_report:
         _print_structure_report(args.symbol, timeframe, args.limit, structure_cache)
+    if args.vwap_vp:
+        _print_vwap_vp(args.symbol, args.vwap_vp, {timeframe: signal})
 
     result = 0
     if args.execute:

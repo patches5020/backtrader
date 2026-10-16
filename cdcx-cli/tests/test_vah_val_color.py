@@ -35,3 +35,23 @@ def test_structure_map_labels(monkeypatch):
     out = format_structure_map("1H", smap)
     assert "Resistance / VAH (red)" in out and RED in _line(out, "VAH (red)")
     assert "Support / VAL (green)" in out and GREEN in _line(out, "VAL (green)")
+
+
+def test_poc_yellow_when_color_forced(monkeypatch):
+    """POC is yellow (user's choice, 2026-10-16) wherever VAH/VAL are coloured."""
+    from cdcx.utils.color import YELLOW, colorize_poc
+
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    assert YELLOW in colorize_poc("POC")
+    out = format_structure_report(build_structure_report("XRP/USD", "1h", *_flat_range_series()))
+    poc_line = _line(out, "POC:")
+    assert YELLOW in poc_line and RED not in poc_line and GREEN not in poc_line
+    smap = StructureMap(poc=1.36, resistance=1.39, support=1.32, fvgs=[], condition="inside", regime=None)
+    assert YELLOW in _line(format_structure_map("1H", smap), "POC (yellow)")
+
+
+def test_poc_plain_label_without_color(monkeypatch):
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.setenv("NO_COLOR", "1")
+    out = format_structure_report(build_structure_report("XRP/USD", "1h", *_flat_range_series()))
+    assert "(point of control, yellow)" in _line(out, "POC:") and "\033[" not in out

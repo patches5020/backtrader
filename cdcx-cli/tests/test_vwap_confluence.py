@@ -105,13 +105,18 @@ def test_zone_untested_while_price_stays_away():
     assert _setup(res, "VP-02").state in ("UNTESTED", "APPROACHING")
 
 
+BULL3 = {"vwap": "bullish", "volume": "bullish", "structure": "bullish", "price_action": None}
+
+
 @pytest.mark.parametrize("fam,htf,expected", [
-    ({"vwap": "bullish", "volume": "bullish", "structure": "bullish", "price_action": None}, True, "QUALIFIED"),
-    ({"vwap": "bullish", "volume": "bullish", "structure": "bullish", "price_action": None}, None, "CANDIDATE"),
-    ({"vwap": "bullish", "volume": "bullish", "structure": None, "price_action": "bullish"}, True, "CANDIDATE"),
-    ({"vwap": "bullish", "volume": None, "structure": "bearish", "price_action": None}, True, "CONFLICT"),
-    ({"vwap": None, "volume": None, "structure": "bearish", "price_action": None}, True, "NONE"),
-    ({"vwap": None, "volume": None, "structure": None, "price_action": None}, True, "NONE"),
+    (BULL3, "bullish", "QUALIFIED"),
+    (BULL3, None, "CANDIDATE"),          # higher timeframes not evaluated
+    (BULL3, "none", "CANDIDATE"),        # no 2-of-4 agreement
+    (BULL3, "bearish", "CANDIDATE"),     # higher timeframes point the other way
+    ({"vwap": "bullish", "volume": "bullish", "structure": None, "price_action": "bullish"}, "bullish", "CANDIDATE"),
+    ({"vwap": "bullish", "volume": None, "structure": "bearish", "price_action": None}, "bullish", "CONFLICT"),
+    ({"vwap": None, "volume": None, "structure": "bearish", "price_action": None}, "bearish", "NONE"),
+    ({"vwap": None, "volume": None, "structure": None, "price_action": None}, "bullish", "NONE"),
 ])
 def test_qualify(fam, htf, expected):
     assert vc.qualify(fam, htf)[0] == expected
@@ -122,3 +127,24 @@ def test_format_never_authorizes_execution():
     text = vc.format_vwap_vp("TEST/USD", "1h", lv, res, d.closes[-1])
     assert "Execution: NOT AUTHORIZED (analysis only)" in text
     assert "POC" in text and "+/-3" in text
+
+
+class _Sig:
+    def __init__(self, signal, regime):
+        self.signal = signal
+        self.regime = type("R", (), {"regime": regime})()
+
+
+def test_htf_direction_uses_the_execute_filter():
+    # transitional timeframes don't count; lower timeframes don't count
+    res = {"1h": _Sig("SELL", "trending"), "4h": _Sig("STRONG SELL", "trending"),
+           "1d": _Sig("STRONG SELL", "transitional"), "5m": _Sig("BUY", "trending")}
+    assert vc.htf_direction(res)[0] == "bearish"
+    res["4h"] = _Sig("STRONG SELL", "transitional")
+    assert vc.htf_direction(res)[0] == "none"
+    assert vc.htf_direction({"1h": _Sig("BUY", "trending"), "4h": _Sig("BUY", "ranging")})[0] == "bullish"
+
+
+def test_build_section_never_raises():
+    text = vc.build_section("TEST/USD", object(), "5m")
+    assert "UNKNOWN" in text

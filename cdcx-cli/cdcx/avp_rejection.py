@@ -52,7 +52,7 @@ from .config import settings
 from .indicators import atr_ema_variant1
 from .indicators import rsi as rsi_module
 from .indicators import volume_profile_fixed
-from .utils.color import colorize_vah, colorize_val
+from .utils.color import colorize_vah, colorize_poc, colorize_val
 
 ANCHOR_LOOKBACK = 100         # bars searched for the decline's low and its starting swing high
 REJECTION_LOOKBACK = 12       # how recent the reclaim must be to be reported
@@ -250,7 +250,7 @@ def format_avp_section(symbol: str, by_tf: dict[str, Optional[AvpRejection]]) ->
             continue
         p = r.profile
         lines.append(f"{tf.upper()} AVP (anchored at decline start):"
-                     + (f"  POC {p.poc:.6g}  {colorize_vah(f'VAH {p.vah:.6g}')}  {colorize_val(f'VAL {p.val:.6g}')}" if p else "  n/a"))
+                     + (f"  {colorize_poc(f'POC {p.poc:.6g}')}  {colorize_vah(f'VAH {p.vah:.6g}')}  {colorize_val(f'VAL {p.val:.6g}')}" if p else "  n/a"))
         level = f" at {r.level_name} {r.level:.6g}" if r.level_name else ""
         lines.append(f"    Setup: {r.state}{level}")
         if r.evidence:

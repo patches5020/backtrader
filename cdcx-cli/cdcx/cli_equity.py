@@ -115,6 +115,13 @@ def build_parser() -> argparse.ArgumentParser:
              "structural-trigger system of its own; this is the simpler single-timeframe read.",
     )
     parser.add_argument(
+        "--vwap-vp", nargs="?", const="5m", default=None, metavar="TF", dest="vwap_vp",
+        help="Analysis only: append the PREV-DAY AVWAP + AFVP section for the last completed regular "
+             "session (09:30-16:00 ET): frozen volume profile, anchored VWAP with +/-1/2/3 sigma bands, "
+             "market condition, setups VP-01..VP-05 and grouped evidence. TF default 5m. Never read by "
+             "confluence, sizing or --execute.",
+    )
+    parser.add_argument(
         "--execute", action="store_true",
         help="With a single --timeframe: opens a PAPER trade straight off that timeframe's own "
              "execution_signal (engine.py's regime + R:R gate). With 2+ --timeframes: runs the SAME "
@@ -458,6 +465,19 @@ def _print_range_preview(results: dict[str, object], raw_data_by_tf: dict[str, o
         print(ranging_strategy.format_ranging_setup(setup))
 
 
+def _print_vwap_vp(exchange, symbol: str, timeframe: str, results: dict | None) -> None:
+    """--vwap-vp for equities: regular-hours bars from the data source; analysis only."""
+    from .volume_profile.vwap_confluence import build_section
+
+    print()
+    try:
+        data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=1000)
+    except Exception as exc:
+        print(f"PREV-DAY AVWAP + AFVP -- {symbol} {timeframe}: UNKNOWN (data unavailable: {exc})")
+        return
+    print(build_section(symbol, data, timeframe, results))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -491,6 +511,8 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(mtf_context.format_atr_alignment(mtf_context.build_atr_alignment(results)))
         print(mtf_context.format_vp_hierarchy(mtf_context.build_vp_hierarchy(results)))
+        if args.vwap_vp:
+            _print_vwap_vp(exchange, args.symbol, args.vwap_vp, results)
         if not args.execute:
             _print_range_preview(results, raw_data_by_tf)
         if args.structure_report and raw_data_by_tf:
@@ -531,6 +553,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.structure_report:
         print()
         _print_structure(args.symbol, args.timeframe, data)
+    if args.vwap_vp:
+        _print_vwap_vp(exchange, args.symbol, args.vwap_vp, {args.timeframe: signal})
 
     if args.execute:
         return _handle_execute(args.symbol, signal, args.balance, args.risk_pct)
