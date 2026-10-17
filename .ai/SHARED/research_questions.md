@@ -45,3 +45,44 @@ the user's decision after the test.
 - **Frozen previous-day profile (closed 2026-10-16 23:05Z):** TV Fixed Range VP 2026-10-15 00:00 -> 23:00 UTC bar,
   not extended, 400 rows, 70% VA: POC 1.3079 / VAH 1.3252 / VAL 1.2924. cdcx 1H (24 rows): 1.30765 / 1.32626 /
   1.2917; cdcx 5m: 1.3077 / 1.3263 / 1.2944. All within one 24-row bucket (~0.0027). Accepted; no code change.
+
+## RQ5 — Do ADX or RSI add information to VP-04 1H? (PRE-REGISTERED 2026-10-17, before any RQ5 result exists)
+Research only. Nothing here changes a live plan, watcher, sizing, permission or protected parameter.
+- **Question:** among the VP-04 1H trades of RQ3, do trades that pass filter A or filter B do better after costs
+  than the trades that fail it? Two tests only; no other thresholds, lengths or combinations will be tried.
+- **Signals and replay (unchanged from RQ3):** `vwap_vp_research.find_signals` on XRP/USD and XLM/USD 1H, setup
+  VP-04, `replay()` with the protected model (1.5 x ATR stop, 2.2/2.6/3.2/4.5 R at 25%, rules G/H/I), costs
+  7.5 bps fee + 2 bps slippage per side, one open trade at a time. Signal = closed bar t; entry = open of t+1.
+- **Indicators, sampled at the signal bar t (closed), from 1H bars up to and including t:** cdcx's own Wilder
+  `calculate_adx` and `calculate_rsi`, length 17 (cdcx default). No new indicator code.
+  - **A (ADX):** ADX[t] > ADX[t-3] (rising over 3 bars) AND the trade's DI leads at t (long: +DI > -DI;
+    short: -DI > +DI). Ties count as fail.
+  - **B (RSI):** long: RSI[t] > 50; short: RSI[t] < 50. Ties count as fail.
+- **Data:** the 1H series fetched once from Crypto.com is saved with its SHA-256; the run reads only that file.
+  Test period = signals 2025-06-01 -> 2026-05-30 (FRESH). After 2026-05-30 (SEEN) is reported separately and
+  doesn't count.
+- **Primary test (per filter):** split the baseline trades into PASS and FAIL (complement). Pooled XRP + XLM, FRESH:
+  difference of mean net R (PASS - FAIL) with a **97.5%** bootstrap interval (two tests -> alpha 0.05/2), 10,000
+  resamples within each group, seed 20261017.
+- **Secondary:** the filtered strategy re-replayed on its own signals vs the baseline: trades, net R, total R,
+  max drawdown, 97.5% CI of mean net R. Also per symbol and the SEEN period, reference only.
+- **Reported for baseline, PASS and FAIL:** trades, win rate, mean gross/cost/net R, total net R, PF, max drawdown,
+  bootstrap interval of the mean.
+- **Decision rule:** a filter "adds information" only if the PRIMARY 97.5% interval of PASS - FAIL lies entirely
+  above 0. It is worth proposing as an advisory `--vwap-vp` line only if, in addition, the re-replayed filtered
+  strategy's 97.5% interval of mean net R lies above 0. Anything else = inconclusive / no; no follow-up threshold
+  search. Known limit: ~150-250 trades per subset can detect only a large difference.
+- **RESULT (run once, 2026-10-17 13:3xZ, after the pre-registration above; frozen data XRP sha256 f0bf4475...,
+  XLM 592333ba...; `cdcx/backtest/vwap_vp_rq5.py`):** baseline reproduces RQ3 (463 trades, +0.034 R).
+  - **A (ADX rising + DI):** PASS 277 trades +0.078 R vs FAIL 186 trades -0.031 R; PASS - FAIL +0.11 R,
+    97.5% CI [-0.241, +0.453] -> **no evidence** (interval includes 0). XRP points positive (+0.26 R) and
+    XLM doesn't (-0.02 R). The re-replayed filtered strategy: 312 trades, +0.079 R, CI [-0.126, +0.290].
+    Its lower max drawdown (12.6 vs 33.7 R) comes mostly from taking fewer trades.
+  - **B (RSI side of 50):** **no evidence**, and the filter is close to a tautology: 452 of 463 VP-04 trades
+    already pass (an accepted value-area break almost always has RSI on that side), leaving only 11 FAIL trades.
+    In the SEEN period, the "significant" B result (3 FAIL trades, all losers) is an artifact of a tiny sample.
+  - **Interpretation:** "no evidence" means inconclusive, not proof that ADX or RSI has no predictive value; the
+    intervals are too wide to rule out a small effect either way.
+  - **Decision (pre-registered rule):** neither filter is proposed. No threshold or length search follows.
+    `--vwap-vp` stays display only. The A difference on XRP could only be reopened as a new pre-registered
+    question on data after 2026-10-17.
