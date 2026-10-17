@@ -1,75 +1,67 @@
-XLM/USD VP PAPER-TRADE PLANS -- 2026-10-10 15:46Z
+XLM/USD VP PAPER-TRADE PLANS -- 2026-10-17 15:26Z = Oct 17 10:26 AM CDT
 
-Last completed candles: 1H 0.19818 closed 2026-10-10 15:00Z | 4H 0.19683 closed 2026-10-10 12:00Z | 1D 0.19462 closed 2026-10-10 00:00Z | 1W 0.22426 closed 2026-10-05 00:00Z
+Last completed candles: 1H 0.17801 closed 2026-10-17 15:00Z = Oct 17 10:00 AM CDT | 4H 0.17924 closed 2026-10-17 12:00Z = Oct 17 7:00 AM CDT | 1D 0.18116 closed 2026-10-17 00:00Z = Oct 16 7:00 PM CDT | 1W 0.20299 closed 2026-10-12 00:00Z = Oct 11 7:00 PM CDT
 
-Levels (armed 2026-10-10T15:22:50Z from closed 4H swings): swing high 0.19709 (2026-10-09 16:00Z), swing low 0.19131 (2026-10-09 16:00Z)
+Levels (armed 2026-10-17 15:26Z = Oct 17 10:26 AM CDT from closed 4H swings): swing high 0.18557 (2026-10-16 08:00Z), swing low 0.17865 (2026-10-16 16:00Z)
 
-🟢 BULLISH xlm-bull-vp (arming 202610101522) -- 2/12 met
-Expires 2026-10-17T15:22:50Z | approval: not given
+🟢 BULLISH xlm-bull-vp (arming 202610171526) -- 1/12 met
+Expires 2026-10-24 15:26Z = Oct 24 10:26 AM CDT | approval: not given
 FAIL R1 CONFLUENCE: cdcx LONG on 2+ of 1H/4H/1D/1W (non-transitional)
        only 0 tradeable TF(s) | 1H transitional, 4H transitional, 1D transitional, 1W transitional
 FAIL R2 REGIME: entry TF (1H) trending, 1H not ranging
        1H transitional
 FAIL R3 CHECKLIST: cdcx entry checklist passes
-       failing: Fibonacci level confirms
+       failing: ATR/EMA trend confirms, Fibonacci level confirms, Fair Value Gap confirms (also blocked by R2 regime)
 FAIL R4 ATR: expansion on the entry TF or 4H (confirms, never triggers)
-       1H Contraction, 4H Contraction, 1D Flat, 1W Flat
+       1H Flat, 4H Contraction, 1D Flat, 1W Flat
 FAIL R5 BOS: bullish BOS on 1H AND 4H, continuation or retest held
-       1H up continuation 0.19745 @ 2026-10-10 15:00Z | 4H - no_break
-FAIL R6 REVERSAL: 4H close > 0.19709, no 4H close < 0.19131 since arming
-       last closed 4H 0.19683 (2026-10-10 12:00Z)
-PASS R7 VWAP: 4H close above anchored VWAP
-       VWAP 0.19425 anchored 2026-10-09T16:00:00Z
+       1H down continuation 0.17865 @ 2026-10-17 15:00Z = Oct 17 10:00 AM CDT | 4H - no_break
+FAIL R6 REVERSAL: 4H close > 0.18557, no 4H close < 0.17865 since arming
+       last closed 4H 0.17924 (2026-10-17 12:00Z = Oct 17 7:00 AM CDT)
+FAIL R7 VWAP: 4H close above anchored VWAP
+       VWAP 0.17984 anchored 2026-10-16 16:00Z = Oct 16 11:00 AM CDT
 FAIL R8 VP: 1H bullish VP setup AND 4H close >= 1D VAH (back above daily value)
-       1H none - | edge 0.20346 | 4H POC 0.21645 VAH 0.22937 VAL 0.21430 HVN 0.21860 LVN 0.23583 | 1D POC 0.18586 VAH 0.20346 VAL 0.16121 (fixed VP, last 200 closed bars)
+       1H none - | edge 0.20346 | 4H POC 0.19295 VAH 0.21365 VAL 0.17684 HVN 0.21595 LVN 0.20905 | 1D POC 0.18586 VAH 0.20346 VAL 0.16121 (fixed VP, last 200 closed bars)
 FAIL R9 FVG: 1H bullish FVG, 4H not below a bearish FVG
-       1H Bullish FVG [0.19636-0.19654] | 4H Bearish FVG [0.20107-0.20272]
+       1H Bearish FVG [0.17808-0.17921] | 4H Bearish FVG [0.18161-0.18312]
 FAIL R10 POC BOUNCE: 1H or 4H anchored-VP POC/VAL bullish rejection CONFIRMED (cdcx AVP)
-       1H NONE | 4H NONE
-FAIL R11 RETEST: after the reclaim of 0.19709, 1H retests within 0.00028 and closes above; fail beyond the margin
-       waiting for a 4H close above 0.19709 (reclaim)
-PASS R12 RISK: circuit breaker clear, no open XLM paper trade, paper equity valid
-       losses 0/3 | equity $980.00
-Sizing preview at last 1H close (NOT an order or entry level): price 0.19818 ATR 0.00112 stop 0.19650 | TP1-4 0.20189 / 0.20256 / 0.20357 / 0.20576 | risk $9.8 (1% equity) -> 5816.02 XLM
-Same distances at the R6 trigger 0.19709 (illustration): stop 0.19540 | TP1-4 0.20080 / 0.20147 / 0.20248 / 0.20467
+       1H PENDING @ 0.17751 | 4H NONE
+FAIL R11 RETEST: after the reclaim of 0.18557, 1H retests within 0.00024 and closes above; fail beyond the margin
+       waiting for a 4H close above 0.18557 (reclaim)
+PASS R12 RISK: circuit breaker clear, no open XLM paper trade, equity valid, open risk within 2%
+       losses 0/3 | equity $960.00 | open risk $0.00 + this trade $9.60 = $9.60 vs cap $19.20 (2% of $960.00)
+Sizing preview at last 1H close (NOT an order or entry level): price 0.17801 ATR 0.00096 stop 0.17656 | TP1-4 0.18119 / 0.18177 / 0.18264 / 0.18452 | risk $9.6 (1% equity) -> 6634.42 XLM
+Same distances at the R6 trigger 0.18557 (illustration): stop 0.18412 | TP1-4 0.18875 / 0.18933 / 0.19020 / 0.19208
 The plan can only fire after R6 + R11; the actual entry, stop and TPs are computed by cdcx from the live price at approval.
 Live execution gate preflight: FAIL -- live confluence is not executable LONG: fewer than 2 tradeable TFs
 
-🔴 BEARISH xlm-bear-vp (arming 202610101522) -- 1/12 met
-Expires 2026-10-17T15:22:50Z | approval: not given
+🔴 BEARISH xlm-bear-vp (arming 202610171526) -- 4/12 met
+Expires 2026-10-24 15:26Z = Oct 24 10:26 AM CDT | approval: not given
 FAIL R1 CONFLUENCE: cdcx SHORT on 2+ of 1H/4H/1D/1W (non-transitional)
        only 0 tradeable TF(s) | 1H transitional, 4H transitional, 1D transitional, 1W transitional
 FAIL R2 REGIME: entry TF (1H) trending, 1H not ranging
        1H transitional
 FAIL R3 CHECKLIST: cdcx entry checklist passes
-       failing: ATR/EMA trend confirms, Fibonacci level confirms, Fair Value Gap confirms, Volume Profile confirms (fixed or anchored)
+       failing: Fibonacci level confirms (also blocked by R2 regime)
 FAIL R4 ATR: expansion on the entry TF or 4H (confirms, never triggers)
-       1H Contraction, 4H Contraction, 1D Flat, 1W Flat
+       1H Flat, 4H Contraction, 1D Flat, 1W Flat
 FAIL R5 BOS: bearish BOS on 1H AND 4H, continuation or retest held
-       1H up continuation 0.19745 @ 2026-10-10 15:00Z | 4H - no_break
-FAIL R6 BREAKDOWN: 4H close < 0.19131, no 4H close > 0.19709 since arming
-       last closed 4H 0.19683 (2026-10-10 12:00Z)
-FAIL R7 VWAP: 4H close below anchored VWAP
-       VWAP 0.19425 anchored 2026-10-09T16:00:00Z
+       1H down continuation 0.17865 @ 2026-10-17 15:00Z = Oct 17 10:00 AM CDT | 4H - no_break
+FAIL R6 BREAKDOWN: 4H close < 0.17865, no 4H close > 0.18557 since arming
+       last closed 4H 0.17924 (2026-10-17 12:00Z = Oct 17 7:00 AM CDT)
+PASS R7 VWAP: 4H close below anchored VWAP
+       VWAP 0.17984 anchored 2026-10-16 16:00Z = Oct 16 11:00 AM CDT
 FAIL R8 VP: 1H bearish VP setup AND 4H close < 4H VAL (rejected from value)
-       1H none - | edge 0.21430 | 4H POC 0.21645 VAH 0.22937 VAL 0.21430 HVN 0.21860 LVN 0.23583 | 1D POC 0.18586 VAH 0.20346 VAL 0.16121 (fixed VP, last 200 closed bars)
-FAIL R9 FVG: 1H bearish FVG, 4H not above a bullish FVG
-       1H Bullish FVG [0.19636-0.19654] | 4H Bearish FVG [0.20107-0.20272]
-FAIL R10 POC REJECTION: 1H or 4H POC bearish rejection CONFIRMED (traded up to POC, closed below, next bar held)
-       1H NONE no closed bar rejected POC 0.19262 in the last 12 | 4H NONE no closed bar rejected POC 0.21645 in the last 12
-FAIL R11 RETEST: after the breakdown of 0.19131, 1H retests within 0.00028 and closes below; fail beyond the margin
-       waiting for a 4H close below 0.19131 (breakdown)
-PASS R12 RISK: circuit breaker clear, no open XLM paper trade, paper equity valid
-       losses 0/3 | equity $980.00
-Sizing preview at last 1H close (NOT an order or entry level): price 0.19818 ATR 0.00112 stop 0.19986 | TP1-4 0.19447 / 0.19380 / 0.19279 / 0.19060 | risk $9.8 (1% equity) -> 5816.02 XLM
-Same distances at the R6 trigger 0.19131 (illustration): stop 0.19299 | TP1-4 0.18760 / 0.18693 / 0.18592 / 0.18373
+       1H none - | edge 0.17684 | 4H POC 0.19295 VAH 0.21365 VAL 0.17684 HVN 0.21595 LVN 0.20905 | 1D POC 0.18586 VAH 0.20346 VAL 0.16121 (fixed VP, last 200 closed bars)
+PASS R9 FVG: 1H bearish FVG, 4H not above a bullish FVG
+       1H Bearish FVG [0.17808-0.17921] | 4H Bearish FVG [0.18161-0.18312]
+PASS R10 POC REJECTION: 1H or 4H POC bearish rejection CONFIRMED (traded up to POC, closed below, next bar held)
+       1H CONFIRMED rejected POC 0.17968 at 2026-10-17 11:00Z = Oct 17 6:00 AM CDT, next bar held below | 4H NONE no closed bar rejected POC 0.19295 in the last 12
+FAIL R11 RETEST: after the breakdown of 0.17865, 1H retests within 0.00024 and closes below; fail beyond the margin
+       waiting for a 4H close below 0.17865 (breakdown)
+PASS R12 RISK: circuit breaker clear, no open XLM paper trade, equity valid, open risk within 2%
+       losses 0/3 | equity $960.00 | open risk $0.00 + this trade $9.60 = $9.60 vs cap $19.20 (2% of $960.00)
+Sizing preview at last 1H close (NOT an order or entry level): price 0.17801 ATR 0.00096 stop 0.17946 | TP1-4 0.17483 / 0.17425 / 0.17338 / 0.17150 | risk $9.6 (1% equity) -> 6634.42 XLM
+Same distances at the R6 trigger 0.17865 (illustration): stop 0.18010 | TP1-4 0.17547 / 0.17489 / 0.17402 / 0.17214
 The plan can only fire after R6 + R11; the actual entry, stop and TPs are computed by cdcx from the live price at approval.
 Live execution gate preflight: FAIL -- live confluence is not executable SHORT: fewer than 2 tradeable TFs
-
-HOW IT WORKS (XLM, same rules as XRP)
-- Closed candles only, checked after every 1H close. Levels derived from fresh cdcx 4H swings at arming and fixed
-  until re-armed (python trading/alerts/xrp_vp_plan_watch.py --arm --symbol XLM/USD).
-- Telegram: progress, PERMISSION NEEDED at 12/12, INVALIDATED, DATA UNAVAILABLE. Never trades by itself.
-- Approve:  python trading/alerts/xrp_vp_plan_watch.py --approve xlm-bull-vp | xlm-bear-vp  (paper only, never --live)
-- Risk 1% of paper equity per trade (XRP and XLM each). Shared with XRP: one paper account (equity = $1,000 + all
-  realized P&L) and one approval at a time. One open paper trade per coin, so at most 2% total open risk.
