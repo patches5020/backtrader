@@ -204,7 +204,25 @@ def extract_summary(report: str) -> str:
     ends = [i for i in (report.find(m, start) for m in ("\n--------------------------------------------------\n",
                                                           "\n-------------------------------------------------\n"))
             if i != -1]
+    vwap = report.find(VWAP_VP_TITLE, start)
+    if vwap != -1:   # the section (on by default) follows the VP hierarchy -- stop at its top rule
+        ends.append(report.rfind("\n", 0, report.rfind("\n", 0, vwap)))
     return report[start:min(ends) if ends else len(report)].strip()
+
+
+VWAP_VP_TITLE = "PREV-DAY AVWAP + AFVP --"
+_VWAP_VP_DIGEST = ("Context (", "STATUS:", "  Next:", "  Invalidates:")
+
+
+def extract_vwap_vp(report: str) -> str:
+    """Compact PREV-DAY AVWAP + AFVP digest: title, Context, STATUS, Next, Invalidates (or its UNKNOWN line)."""
+    at = report.find(VWAP_VP_TITLE)
+    if at == -1:
+        return ""
+    end = report.find("Execution:", at)
+    body = report[at:end if end != -1 else len(report)].splitlines()
+    keep = [body[0].strip()] + [l.rstrip() for l in body[1:] if l.startswith(_VWAP_VP_DIGEST + ("UNKNOWN",))]
+    return "\n".join(keep)
 
 
 def extract_block(report: str, title: str) -> str:
@@ -382,7 +400,8 @@ class Bot:
         if not summary:
             self.api.send_text(chat_id, f"No summary produced (exit {code}):\n{report[-1500:]}", pre=True)
             return
-        self.api.send_text(chat_id, f"{summary}\n\n{extract_decisions(report)}", pre=True,
+        parts = [summary, extract_decisions(report), extract_vwap_vp(report)]
+        self.api.send_text(chat_id, "\n\n".join(p for p in parts if p), pre=True,
                            source=report_source(cmd.symbol), symbol=cmd.symbol)
 
     def _full_report(self, chat_id: int, symbol: str,
@@ -401,7 +420,7 @@ class Bot:
         if result is None:
             return
         report, report_file = result
-        parts = [extract_summary(report), extract_decisions(report),
+        parts = [extract_summary(report), extract_decisions(report), extract_vwap_vp(report),
                  extract_block(report, "STRUCTURE SETUP"),
                  extract_block(report, "MULTI-TIMEFRAME STRUCTURE / VP SUMMARY"),
                  extract_block(report, "AVP BULLISH REJECTION")]

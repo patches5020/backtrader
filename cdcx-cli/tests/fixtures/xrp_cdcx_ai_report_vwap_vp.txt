@@ -1,0 +1,311 @@
+=================================================
+              CDCX AI TRADE ANALYSIS             
+=================================================
+
+Symbol: XRP/USD   Timeframe: 1w
+Snapshot: 1792247021  (entry/atr/stop/TP all computed from this single pull)
+
+MARKET REGIME: 🔴 [RED] NO TRADE (TRANSITION)
+  Trend: 4/10   Range: 3/10
+
+DIRECTION BIAS: NEUTRAL  (direction score: -3.0 / 100)
+TRADE QUALITY: 38/100  (breadth of indicator confirmation)
+SETUP SCORE: 25/100  (regime validity + direction + R:R + structure + confirmation)
+
+DECISION: NO TRADE
+DECISION CONFIDENCE: 100.0%
+REASON: Market regime is transitional -- no trend or range edge to trade.
+
+-------------------------------------------------
+Ema Trend                +0  (No Clear Trend)
+Atr Expansion            +4  (Flat)
+Adx Trend Strength       +0  (Trend Developing, Direction Unclear)
+Bollinger Bands          +0  (No Trend Context)
+Candlestick Patterns     +0  (No Aligned Pattern)
+Rsi Momentum             +0  (Neutral (No Trend Context))
+Fib Retracement          +0  (No Level Confluence)
+Fib Extension            +0  (Trend Not Confirmed)
+Fair Value Gap           +0  (No Aligned FVG)
+Fixed Volume Profile     -10  (Below Value Area)
+Anchored Volume Profile  -10  (Below Value Area)
+Market Structure         +5  (Structure Forming, No Confirmed BOS)
+Risk Reward              +8  (1 : 2.2)
+
+-------------------------------------------------
+ATR Timeframe: 1w   ATR Length: 11
+Entry:       1.300200
+  Long:      1.300200
+  Short:     1.300200
+ATR:         0.185449
+ATR x mult:  0.278170  (1.5x ATR -- the distance added/subtracted for the stop)
+Stop Loss:   1.57837
+  Long:      1.02203
+  Short:     1.57837
+Breakeven:   1.300200  (stop moves here once TP1 is hit)
+  Long:      1.300200
+  Short:     1.300200
+Take Profits (ATR R-multiples):
+TP1: 0.688218
+  Long:      1.91218
+  Short:     0.688218
+TP2: 0.576948
+  Long:      2.02345
+  Short:     0.576948
+TP3: 0.410044
+  Long:      2.19036
+  Short:     0.410044
+TP4: 0.0484177
+  Long:      2.55198
+  Short:     0.0484177
+
+Risk/Reward: 1 : 2.2
+  Long:      1 : 2.2
+  Short:     1 : 2.2
+=================================================
+
+=================================================
+              CDCX AI TRADE ANALYSIS             
+=================================================
+
+Symbol: XRP/USD   Timeframe: 1d
+Snapshot: 1792247022  (entry/atr/stop/TP all computed from this single pull)
+
+MARKET REGIME: 🔴 [RED] NO TRADE (TRANSITION)
+  Trend: 4/10   Range: 3/10
+
+DIRECTION BIAS: BEARISH  (direction score: -51.0 / 100)
+TRADE QUALITY: 85/100  (breadth of indicator confirmation)
+SETUP SCORE: 44/100  (regime validity + direction + R:R + structure + confirmation)
+
+DECISION: NO TRADE
+DECISION CONFIDENCE: 100.0%
+REASON: Market regime is transitional -- no trend or range edge to trade.
+
+-------------------------------------------------
+Ema Trend                -15  (Bearish)
+Atr Expansion            +4  (Flat)
+Adx Trend Strength       -10  (Strong Trend (-DI Confirmed))
+Bollinger Bands          -10  (Riding Lower Band (Bearish Continuation))
+Candlestick Patterns     +0  (No Aligned Pattern)
+Rsi Momentum             -10  (Bearish Momentum)
+Fib Retracement          +0  (No Level Confluence)
+Fib Extension            +8  (Full Target Ladder Ahead)
+Fair Value Gap           -15  (Bearish FVG)
+Fixed Volume Profile     -6  (Below POC)
+Anchored Volume Profile  -10  (Below Value Area)
+Market Structure         +5  (Structure Forming, No Confirmed BOS)
+Risk Reward              +8  (1 : 2.2)
+
+-------------------------------------------------
+ATR Timeframe: 1d   ATR Length: 11
+Entry:       1.300200
+  Long:      1.300200
+  Short:     1.300200
+ATR:         0.061755
+ATR x mult:  0.092630  (1.5x ATR -- the distance added/subtracted for the stop)
+Stop Loss:   1.39283
+  Long:      1.20757
+  Short:     1.39283
+Breakeven:   1.300200  (stop moves here once TP1 is hit)
+  Long:      1.300200
+  Short:     1.300200
+Take Profits (ATR R-multiples):
+TP1: 1.09641
+  Long:      1.50399
+  Short:     1.09641
+TP2: 1.05936
+  Long:      1.54104
+  Short:     1.05936
+TP3: 1.00378
+  Long:      1.59662
+  Short:     1.00378
+TP4: 0.883355
+  Long:      1.71705
+  Short:     0.883355
+
+Risk/Reward: 1 : 2.2
+  Long:      1 : 2.2
+  Short:     1 : 2.2
+=================================================
+
+=================================================
+              CDCX AI TRADE ANALYSIS             
+=================================================
+
+Symbol: XRP/USD   Timeframe: 4h
+Snapshot: 1792247023  (entry/atr/stop/TP all computed from this single pull)
+
+MARKET REGIME: 🔴 [RED] NO TRADE (TRANSITION)
+  Trend: 6/10   Range: 5/10
+
+DIRECTION BIAS: BEARISH  (direction score: -55.0 / 100)
+TRADE QUALITY: 77/100  (breadth of indicator confirmation)
+SETUP SCORE: 44/100  (regime validity + direction + R:R + structure + confirmation)
+
+DECISION: NO TRADE
+DECISION CONFIDENCE: 100.0%
+REASON: Market regime is transitional -- no trend or range edge to trade.
+
+-------------------------------------------------
+Ema Trend                -15  (Bearish)
+Atr Expansion            +0  (Contraction)
+Adx Trend Strength       -10  (Strong Trend (-DI Confirmed))
+Bollinger Bands          -10  (Riding Lower Band (Bearish Continuation))
+Candlestick Patterns     +0  (No Aligned Pattern)
+Rsi Momentum             -10  (Bearish Momentum)
+Fib Retracement          +0  (No Level Confluence)
+Fib Extension            +8  (Full Target Ladder Ahead)
+Fair Value Gap           -15  (Bearish FVG)
+Fixed Volume Profile     -10  (Below Value Area)
+Anchored Volume Profile  -6  (Below POC)
+Market Structure         +5  (Structure Forming, No Confirmed BOS)
+Risk Reward              +8  (1 : 2.2)
+
+-------------------------------------------------
+ATR Timeframe: 4h   ATR Length: 11
+Entry:       1.300200
+  Long:      1.300200
+  Short:     1.300200
+ATR:         0.020140
+ATR x mult:  0.030210  (1.5x ATR -- the distance added/subtracted for the stop)
+Stop Loss:   1.33041
+  Long:      1.26999
+  Short:     1.33041
+Breakeven:   1.300200  (stop moves here once TP1 is hit)
+  Long:      1.300200
+  Short:     1.300200
+Take Profits (ATR R-multiples):
+TP1: 1.23374
+  Long:      1.36666
+  Short:     1.23374
+TP2: 1.22165
+  Long:      1.37875
+  Short:     1.22165
+TP3: 1.20353
+  Long:      1.39687
+  Short:     1.20353
+TP4: 1.16425
+  Long:      1.43615
+  Short:     1.16425
+
+Risk/Reward: 1 : 2.2
+  Long:      1 : 2.2
+  Short:     1 : 2.2
+=================================================
+
+=================================================
+              CDCX AI TRADE ANALYSIS             
+=================================================
+
+Symbol: XRP/USD   Timeframe: 1h
+Snapshot: 1792247024  (entry/atr/stop/TP all computed from this single pull)
+
+MARKET REGIME: 🔴 [RED] NO TRADE (TRANSITION)
+  Trend: 2/10   Range: 5/10
+
+DIRECTION BIAS: BEARISH  (direction score: -71.0 / 100)
+TRADE QUALITY: 92/100  (breadth of indicator confirmation)
+SETUP SCORE: 60/100  (regime validity + direction + R:R + structure + confirmation)
+
+DECISION: NO TRADE
+DECISION CONFIDENCE: 100.0%
+REASON: Market regime is transitional -- no trend or range edge to trade.
+
+-------------------------------------------------
+Ema Trend                -15  (Bearish)
+Atr Expansion            +4  (Flat)
+Adx Trend Strength       -10  (Strong Trend (-DI Confirmed))
+Bollinger Bands          -10  (Riding Lower Band (Bearish Continuation))
+Candlestick Patterns     +0  (No Aligned Pattern)
+Rsi Momentum             -10  (Bearish Momentum)
+Fib Retracement          -9  (Bounce from 78.6%)
+Fib Extension            +8  (Full Target Ladder Ahead)
+Fair Value Gap           -15  (Bearish FVG)
+Fixed Volume Profile     -6  (Below POC)
+Anchored Volume Profile  -6  (Below POC)
+Market Structure         -10  (Lower High / Lower Low - Bearish BOS)
+Risk Reward              +8  (1 : 2.2)
+
+-------------------------------------------------
+ATR Timeframe: 1h   ATR Length: 11
+Entry:       1.300200
+  Long:      1.300200
+  Short:     1.300200
+ATR:         0.006791
+ATR x mult:  0.010190  (1.5x ATR -- the distance added/subtracted for the stop)
+Stop Loss:   1.31039
+  Long:      1.29001
+  Short:     1.31039
+Breakeven:   1.300200  (stop moves here once TP1 is hit)
+  Long:      1.300200
+  Short:     1.300200
+Take Profits (ATR R-multiples):
+TP1: 1.27779
+  Long:      1.32261
+  Short:     1.27779
+TP2: 1.27371
+  Long:      1.32669
+  Short:     1.27371
+TP3: 1.2676
+  Long:      1.3328
+  Short:     1.2676
+TP4: 1.25436
+  Long:      1.34604
+  Short:     1.25436
+
+Risk/Reward: 1 : 2.2
+  Long:      1 : 2.2
+  Short:     1 : 2.2
+=================================================
+
+=================================================================================================================
+                                        MULTI-TIMEFRAME SUMMARY -- XRP/USD                                       
+=================================================================================================================
+Timeframe   Score   Signal        Market    ADX(17)   RSI(17)   VOL(17)   ATR         Range  FVG       EMA       
+-----------------------------------------------------------------------------------------------------------------
+1w          0.0     STRONG SELL   bearish   23.2      46.5      0.6x      flat        no     neutral   neutral   
+1d          0.0     STRONG SELL   bearish   25.9      38.6      1.0x      flat        no     bearish   bearish   
+4h          0.0     STRONG SELL   bearish   45.1      37.9      0.3x      contraction no     bearish   bearish   
+1h          0.0     STRONG SELL   bearish   26.9      41.4      1.6x      flat        no     bearish   bearish   
+=================================================================================================================
+
+ATR ALIGNMENT: 0/4 timeframes expanding
+  1W: Flat
+  1D: Flat
+  4H: Contraction
+  1H: Flat
+VOLUME PROFILE HIERARCHY:
+  1W [macro location]: Value Area Breakout (bearish)
+  1D [major trend/value location]: None
+  4H [setup location]: Value Area Breakout (bearish)
+  1H [entry-area location]: None
+
+---------------------------------------------------------------------------------
+          PREV-DAY AVWAP + AFVP -- XRP/USD 1h (analysis only, vwap-vp-1)         
+---------------------------------------------------------------------------------
+Prior session 10-16 00:00Z -> 10-17 00:00Z (24 bars), frozen:
+  POC 1.33719 | VAH 1.34521 | VAL 1.30509 | HVN 1.33451 | LVN 1.34789
+AVWAP from 10-16 00:00Z (ohlc4): 1.31614  sigma 0.016505  (last closed bar 10-17 13:00Z)
+  +/-1: 1.29964 / 1.33265 | +/-2: 1.28313 / 1.34915 | +/-3: 1.26663 / 1.36566
+Price 1.3002 = -1.16 sigma | Condition: UNCLEAR -- VWAP slope -0.21 sigma over 12 bars, 0 crosses, 0% of closes above
+
+VP-01 POC reaction         NONE        no reaction at 1.33719 in the last 6 bars
+VP-02 Heavy-volume zone    TESTED      prior value area 1.30509-1.34521 entered 2 time(s) today
+VP-03 Trend continuation   NONE        needs a TREND condition
+VP-04 Value-area breakout  PENDING     broke 1.30509, 2/3 closes so far
+VP-05 Band exhaustion      NONE        no +/-2 sigma touch in the last 6 bars
+
+  vwap          --        UNCLEAR: VWAP slope -0.21 sigma over 12 bars, 0 crosses, 0% of closes above
+  volume        --        VP-04 PENDING, VP-01 NONE
+  structure     bearish   BOS continuation bearish at 1.3013
+  price_action  bearish   unfilled bearish FVG 1.2982-1.3043
+  cdcx HTF      none      0 non-transitional timeframe(s) of 1H/4H/1D/1W -- need 2
+
+Context (1h, closed bars): regime TRANSITIONAL | ADX(17) 26.4 -DI leads | RSI(17) 38.4 | VOL 1.6x of 17-bar avg -- context only, not scored
+
+DECISION: CANDIDATE (bearish) -- structure, price_action agree; still needs 3 families incl. structure and cdcx 2-of-4 confluence (none right now) to be bearish
+STATUS: SETUP DEVELOPING (bearish) -- monitor only
+  Next:        cdcx 2-of-4 confluence turns bearish AND a third evidence family agrees
+  Invalidates: 1H close back above AVWAP 1.31614 or bullish BOS: 1H close above 1.3087
+Execution: NOT AUTHORIZED (analysis only)
+---------------------------------------------------------------------------------

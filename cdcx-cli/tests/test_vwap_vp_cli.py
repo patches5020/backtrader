@@ -17,12 +17,14 @@ def _recent_5m(market="24x7"):
 
 def test_flag_parsing():
     p = cli.build_parser()
-    assert p.parse_args(["--symbol", "XRP/USD"]).vwap_vp is None
+    assert p.parse_args(["--symbol", "XRP/USD"]).vwap_vp == "1h"                  # on by default
     assert p.parse_args(["--symbol", "XRP/USD", "--vwap-vp"]).vwap_vp == "5m"
     assert p.parse_args(["--symbol", "XRP/USD", "--vwap-vp", "15m"]).vwap_vp == "15m"
+    assert p.parse_args(["--symbol", "XRP/USD", "--no-vwap-vp"]).vwap_vp is None
     pe = cli_equity.build_parser()
-    assert pe.parse_args(["--source", "robinhood", "--symbol", "SPY"]).vwap_vp is None
+    assert pe.parse_args(["--source", "robinhood", "--symbol", "SPY"]).vwap_vp == "15m"
     assert pe.parse_args(["--source", "robinhood", "--symbol", "SPY", "--vwap-vp"]).vwap_vp == "5m"
+    assert pe.parse_args(["--source", "robinhood", "--symbol", "SPY", "--no-vwap-vp"]).vwap_vp is None
 
 
 def test_section_prints_and_never_authorizes(monkeypatch, capsys):

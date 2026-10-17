@@ -162,3 +162,32 @@ def test_bad_command_gets_a_helpful_reply(tmp_path):
 def test_allowed_ids_parsing():
     from cdcx.telegram_send import parse_chat_ids
     assert parse_chat_ids("8814026148, -100123,abc,") == (8814026148, -100123)
+
+
+# --- PREV-DAY AVWAP + AFVP (on by default since 2026-10-17; real cdcx-ai output) ----
+REPORT_VWAP_VP = (pathlib.Path(__file__).parent / "fixtures" / "xrp_cdcx_ai_report_vwap_vp.txt").read_text()
+
+
+def test_summary_stops_before_the_vwap_vp_section():
+    s = tb.extract_summary(REPORT_VWAP_VP)
+    assert "MULTI-TIMEFRAME SUMMARY -- XRP/USD" in s and "VOLUME PROFILE HIERARCHY" in s
+    assert "PREV-DAY AVWAP" not in s and "Prior session" not in s
+    assert not s.endswith("-" * 20)
+
+
+def test_vwap_vp_digest_is_compact():
+    lines = tb.extract_vwap_vp(REPORT_VWAP_VP).splitlines()
+    assert lines[0].startswith("PREV-DAY AVWAP + AFVP -- XRP/USD 1h")
+    assert [l.split(":")[0].split(" (")[0].strip() for l in lines[1:]] == ["Context", "STATUS", "Next", "Invalidates"]
+    assert tb.extract_vwap_vp(REPORT) == ""                          # older report without the section
+
+
+def test_vwap_vp_digest_unknown_paths():
+    rule = "-" * 81
+    levels_unknown = (f"{rule}\n   PREV-DAY AVWAP + AFVP -- SPY 1h (analysis only, vwap-vp-1)\n{rule}\n"
+                      "UNKNOWN -- session has 6 of 7 1h bars -- missing data\n"
+                      "STATUS: DATA UNKNOWN -- monitor only\nExecution: NOT AUTHORIZED (analysis only)\n")
+    assert tb.extract_vwap_vp(levels_unknown).splitlines()[1:] == [
+        "UNKNOWN -- session has 6 of 7 1h bars -- missing data", "STATUS: DATA UNKNOWN -- monitor only"]
+    fetch_failed = "\nPREV-DAY AVWAP + AFVP -- XRP/USD 1h: UNKNOWN (data unavailable: down)\n"
+    assert tb.extract_vwap_vp(fetch_failed) == "PREV-DAY AVWAP + AFVP -- XRP/USD 1h: UNKNOWN (data unavailable: down)"

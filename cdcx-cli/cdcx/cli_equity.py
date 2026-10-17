@@ -115,12 +115,15 @@ def build_parser() -> argparse.ArgumentParser:
              "structural-trigger system of its own; this is the simpler single-timeframe read.",
     )
     parser.add_argument(
-        "--vwap-vp", nargs="?", const="5m", default=None, metavar="TF", dest="vwap_vp",
-        help="Analysis only: append the PREV-DAY AVWAP + AFVP section for the last completed regular "
+        "--vwap-vp", nargs="?", const="5m", default="15m", metavar="TF", dest="vwap_vp",
+        help="Analysis only: the PREV-DAY AVWAP + AFVP section (on by default, 15m -- 1h reads UNKNOWN "
+             "because a 6.5-hour session doesn't fill whole hourly bars) for the last completed regular "
              "session (09:30-16:00 ET): frozen volume profile, anchored VWAP with +/-1/2/3 sigma bands, "
-             "market condition, setups VP-01..VP-05 and grouped evidence. TF default 5m. Never read by "
-             "confluence, sizing or --execute.",
+             "market condition, setups VP-01..VP-05, grouped evidence, Context, STATUS and "
+             "Next/Invalidates. Bare --vwap-vp = 5m. Never read by confluence, sizing or --execute.",
     )
+    parser.add_argument("--no-vwap-vp", action="store_const", const=None, dest="vwap_vp",
+                        help="Leave out the PREV-DAY AVWAP + AFVP section.")
     parser.add_argument(
         "--execute", action="store_true",
         help="With a single --timeframe: opens a PAPER trade straight off that timeframe's own "

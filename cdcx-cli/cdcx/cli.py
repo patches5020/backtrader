@@ -250,13 +250,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="With --backtrader: show a backtrader plot after the run.",
     )
     parser.add_argument(
-        "--vwap-vp", nargs="?", const="5m", default=None, metavar="TF", dest="vwap_vp",
-        help="Analysis only: append the PREV-DAY AVWAP + AFVP section -- the previous UTC day's frozen "
-             "volume profile (POC/VAH/VAL/HVN/LVN), an anchored VWAP from that day's open with +/-1/2/3 "
-             "sigma bands, market condition, setups VP-01..VP-05 and grouped evidence. TF is the intraday "
-             "timeframe it reads (default 5m). Never read by confluence, the checklist, sizing or "
-             "--execute; never opens a trade.",
+        "--vwap-vp", nargs="?", const="5m", default="1h", metavar="TF", dest="vwap_vp",
+        help="Analysis only: the PREV-DAY AVWAP + AFVP section (on by default, 1h) -- the previous UTC day's "
+             "frozen volume profile (POC/VAH/VAL/HVN/LVN), an anchored VWAP from that day's open with "
+             "+/-1/2/3 sigma bands, market condition, setups VP-01..VP-05, grouped evidence, Context, "
+             "STATUS and Next/Invalidates. TF is the intraday timeframe it reads (bare --vwap-vp = 5m). "
+             "Never read by confluence, the checklist, sizing or --execute; never opens a trade.",
     )
+    parser.add_argument("--no-vwap-vp", action="store_const", const=None, dest="vwap_vp",
+                        help="Leave out the PREV-DAY AVWAP + AFVP section.")
     parser.add_argument(
         "--structure", action="store_true",
         help="Merge the POC/FVG/volume structure system into the same run's report: "
