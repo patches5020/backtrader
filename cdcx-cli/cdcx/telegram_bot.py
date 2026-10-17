@@ -215,14 +215,17 @@ _VWAP_VP_DIGEST = ("Context (", "STATUS:", "  Next:", "  Invalidates:")
 
 
 def extract_vwap_vp(report: str) -> str:
-    """Compact PREV-DAY AVWAP + AFVP digest: title, Context, STATUS, Next, Invalidates (or its UNKNOWN line)."""
-    at = report.find(VWAP_VP_TITLE)
-    if at == -1:
-        return ""
-    end = report.find("Execution:", at)
-    body = report[at:end if end != -1 else len(report)].splitlines()
-    keep = [body[0].strip()] + [l.rstrip() for l in body[1:] if l.startswith(_VWAP_VP_DIGEST + ("UNKNOWN",))]
-    return "\n".join(keep)
+    """Compact PREV-DAY AVWAP + AFVP digest, one block per section (--vwap-vp may list several
+    timeframes): title, Context, STATUS, Next, Invalidates (or its UNKNOWN line)."""
+    blocks, at = [], report.find(VWAP_VP_TITLE)
+    while at != -1:
+        nxt = report.find(VWAP_VP_TITLE, at + 1)
+        stop = [i for i in (report.find("Execution:", at), nxt) if i != -1]
+        body = report[at:min(stop) if stop else len(report)].splitlines()
+        blocks.append("\n".join([body[0].strip()] + [l.rstrip() for l in body[1:]
+                                                     if l.startswith(_VWAP_VP_DIGEST + ("UNKNOWN",))]))
+        at = nxt
+    return "\n\n".join(blocks)
 
 
 def extract_block(report: str, title: str) -> str:

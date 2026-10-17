@@ -64,3 +64,39 @@ def test_equity_section_uses_the_given_exchange(capsys):
 
     cli_equity._print_vwap_vp(FakeEquity(), "SPY", "5m", results=None)
     assert "SPY 5m: UNKNOWN (data unavailable: no session)" in capsys.readouterr().out
+
+
+# --- several timeframes in one --vwap-vp (2026-10-17) ---------------------------------
+from cdcx.volume_profile.vwap_confluence import split_timeframes
+
+
+def test_split_timeframes_keeps_intraday_in_order():
+    assert split_timeframes("1w,1d,4h,1h,45m,30m,15m,5m") == (["4h", "1h", "45m", "30m", "15m", "5m"], ["1w", "1d"])
+    assert split_timeframes("1h") == (["1h"], [])
+    assert split_timeframes(" 15m , 1h,15m,,") == (["15m", "1h"], [])            # spaces, duplicates, blanks
+    assert split_timeframes("1d,banana") == ([], ["1d", "banana"])
+
+
+def test_crypto_prints_one_section_per_intraday_timeframe(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(cli, "_print_vwap_vp_one", lambda s, tf, r: calls.append(tf) or print(f"SECTION {tf}"))
+    cli._print_vwap_vp("XRP/USD", "1w,1d,1h,15m", results={})
+    out = capsys.readouterr().out
+    assert calls == ["1h", "15m"]
+    assert "skipped 1w, 1d" in out and out.index("SECTION 1h") < out.index("SECTION 15m")
+    cli._print_vwap_vp("XRP/USD", "1w,1d", results={})
+    assert "needs an intraday timeframe, got '1w,1d'" in capsys.readouterr().out
+
+
+def test_equity_prints_one_section_per_timeframe_and_isolates_failures(capsys):
+    class Partly:
+        def fetch_ohlcv(self, symbol, timeframe="5m", limit=0):
+            if timeframe == "15m":
+                raise RuntimeError("no 15m data")
+            return _recent_5m(market="us_equity")
+
+    cli_equity._print_vwap_vp(Partly(), "SPY", "1d,15m,5m", results=None)
+    out = capsys.readouterr().out
+    assert "skipped 1d" in out
+    assert "SPY 15m: UNKNOWN (data unavailable: no 15m data)" in out
+    assert "PREV-DAY AVWAP + AFVP -- SPY 5m" in out                     # one failure doesn't stop the next

@@ -468,6 +468,21 @@ def disposition(res: VwapVpResult, levels: PrevDayLevels, timeframe: str) -> tup
     return status, nxt, " or ".join(inval) or "UNKNOWN (no reference level available)"
 
 
+def split_timeframes(value: str) -> tuple[list[str], list[str]]:
+    """--vwap-vp's value -> (intraday timeframes in the given order, deduplicated; the rest).
+    '1w,1d,4h,1h,15m' -> (['4h', '1h', '15m'], ['1w', '1d']). The previous-day profile needs bars
+    shorter than a day, so daily-or-longer and unrecognised entries go in the second list."""
+    from .. import no_trade_gate
+
+    keep, skip = [], []
+    for tf in (t.strip() for t in str(value).split(",")):
+        if not tf or tf in keep or tf in skip:
+            continue
+        secs = no_trade_gate.timeframe_to_seconds(tf) or 0
+        (keep if 0 < secs < 86400 else skip).append(tf)
+    return keep, skip
+
+
 def build_section(symbol: str, data, timeframe: str, results: Optional[dict] = None,
                   now: Optional[float] = None, context_data=None) -> str:
     """The whole printable section from one intraday OHLCV series; never raises (errors -> UNKNOWN).

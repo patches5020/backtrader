@@ -250,11 +250,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="With --backtrader: show a backtrader plot after the run.",
     )
     parser.add_argument(
-        "--vwap-vp", nargs="?", const="5m", default="1h", metavar="TF", dest="vwap_vp",
+        "--vwap-vp", nargs="?", const="5m", default="1h", metavar="TF[,TF...]", dest="vwap_vp",
         help="Analysis only: the PREV-DAY AVWAP + AFVP section (on by default, 1h) -- the previous UTC day's "
              "frozen volume profile (POC/VAH/VAL/HVN/LVN), an anchored VWAP from that day's open with "
              "+/-1/2/3 sigma bands, market condition, setups VP-01..VP-05, grouped evidence, Context, "
-             "STATUS and Next/Invalidates. TF is the intraday timeframe it reads (bare --vwap-vp = 5m). "
+             "STATUS and Next/Invalidates. TF is the intraday timeframe it reads, or a comma list for one section each (e.g. 1h,15m,5m; daily/weekly entries are skipped). Bare --vwap-vp = 5m. "
              "Never read by confluence, the checklist, sizing or --execute; never opens a trade.",
     )
     parser.add_argument("--no-vwap-vp", action="store_const", const=None, dest="vwap_vp",
@@ -508,18 +508,31 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict, timefra
     return True
 
 
-def _print_vwap_vp(symbol: str, timeframe: str, results: dict | None) -> None:
-    """--vwap-vp: fetch `timeframe` bars covering the previous UTC day + today and print the section.
+def _print_vwap_vp(symbol: str, timeframes: str, results: dict | None) -> None:
+    """--vwap-vp: one section per intraday timeframe in `timeframes` (one, or a comma list), in order.
     Analysis only -- see cdcx/volume_profile/vwap_confluence.py."""
+    from .volume_profile.vwap_confluence import split_timeframes
+
+    keep, skip = split_timeframes(timeframes)
+    print()
+    if not keep:
+        print(f"PREV-DAY AVWAP + AFVP: UNKNOWN (--vwap-vp needs an intraday timeframe, got {timeframes!r})")
+        return
+    if skip:
+        print(f"PREV-DAY AVWAP + AFVP: skipped {', '.join(skip)} -- the previous-day profile needs intraday bars")
+    for i, tf in enumerate(keep):
+        if i:
+            print()
+        _print_vwap_vp_one(symbol, tf, results)
+
+
+def _print_vwap_vp_one(symbol: str, timeframe: str, results: dict | None) -> None:
+    """Fetch `timeframe` bars covering the previous UTC day + today and print one section."""
     from .exchange.cryptocom import CryptoComExchange
     from .no_trade_gate import timeframe_to_seconds
     from .volume_profile.vwap_confluence import build_section
 
-    tf_s = timeframe_to_seconds(timeframe) or 0
-    print()
-    if not tf_s or tf_s >= 86400:
-        print(f"PREV-DAY AVWAP + AFVP: UNKNOWN (--vwap-vp needs an intraday timeframe, got {timeframe!r})")
-        return
+    tf_s = timeframe_to_seconds(timeframe)
     section_n = int(2 * 86400 / tf_s) + 10
     try:
         exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)

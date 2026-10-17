@@ -115,12 +115,12 @@ def build_parser() -> argparse.ArgumentParser:
              "structural-trigger system of its own; this is the simpler single-timeframe read.",
     )
     parser.add_argument(
-        "--vwap-vp", nargs="?", const="5m", default="15m", metavar="TF", dest="vwap_vp",
+        "--vwap-vp", nargs="?", const="5m", default="15m", metavar="TF[,TF...]", dest="vwap_vp",
         help="Analysis only: the PREV-DAY AVWAP + AFVP section (on by default, 15m -- 1h reads UNKNOWN "
              "because a 6.5-hour session doesn't fill whole hourly bars) for the last completed regular "
              "session (09:30-16:00 ET): frozen volume profile, anchored VWAP with +/-1/2/3 sigma bands, "
              "market condition, setups VP-01..VP-05, grouped evidence, Context, STATUS and "
-             "Next/Invalidates. Bare --vwap-vp = 5m. Never read by confluence, sizing or --execute.",
+             "Next/Invalidates. TF may be a comma list for one section each (e.g. 15m,5m; daily/weekly entries are skipped). Bare --vwap-vp = 5m. Never read by confluence, sizing or --execute.",
     )
     parser.add_argument("--no-vwap-vp", action="store_const", const=None, dest="vwap_vp",
                         help="Leave out the PREV-DAY AVWAP + AFVP section.")
@@ -468,17 +468,27 @@ def _print_range_preview(results: dict[str, object], raw_data_by_tf: dict[str, o
         print(ranging_strategy.format_ranging_setup(setup))
 
 
-def _print_vwap_vp(exchange, symbol: str, timeframe: str, results: dict | None) -> None:
-    """--vwap-vp for equities: regular-hours bars from the data source; analysis only."""
-    from .volume_profile.vwap_confluence import build_section
+def _print_vwap_vp(exchange, symbol: str, timeframes: str, results: dict | None) -> None:
+    """--vwap-vp for equities: one section per intraday timeframe (one, or a comma list), from
+    regular-hours bars of the data source; analysis only."""
+    from .volume_profile.vwap_confluence import build_section, split_timeframes
 
+    keep, skip = split_timeframes(timeframes)
     print()
-    try:
-        data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=1000)
-    except Exception as exc:
-        print(f"PREV-DAY AVWAP + AFVP -- {symbol} {timeframe}: UNKNOWN (data unavailable: {exc})")
+    if not keep:
+        print(f"PREV-DAY AVWAP + AFVP: UNKNOWN (--vwap-vp needs an intraday timeframe, got {timeframes!r})")
         return
-    print(build_section(symbol, data, timeframe, results))
+    if skip:
+        print(f"PREV-DAY AVWAP + AFVP: skipped {', '.join(skip)} -- the previous-day profile needs intraday bars")
+    for i, tf in enumerate(keep):
+        if i:
+            print()
+        try:
+            data = exchange.fetch_ohlcv(symbol, timeframe=tf, limit=1000)
+        except Exception as exc:
+            print(f"PREV-DAY AVWAP + AFVP -- {symbol} {tf}: UNKNOWN (data unavailable: {exc})")
+            continue
+        print(build_section(symbol, data, tf, results))
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -191,3 +191,15 @@ def test_vwap_vp_digest_unknown_paths():
         "UNKNOWN -- session has 6 of 7 1h bars -- missing data", "STATUS: DATA UNKNOWN -- monitor only"]
     fetch_failed = "\nPREV-DAY AVWAP + AFVP -- XRP/USD 1h: UNKNOWN (data unavailable: down)\n"
     assert tb.extract_vwap_vp(fetch_failed) == "PREV-DAY AVWAP + AFVP -- XRP/USD 1h: UNKNOWN (data unavailable: down)"
+
+
+def test_vwap_vp_digest_covers_every_section():
+    two = REPORT_VWAP_VP + "\n" + REPORT_VWAP_VP.replace("XRP/USD 1h", "XRP/USD 15m").replace("Context (1h", "Context (15m")
+    blocks = tb.extract_vwap_vp(two).split("\n\n")
+    assert len(blocks) == 2
+    assert blocks[0].startswith("PREV-DAY AVWAP + AFVP -- XRP/USD 1h")
+    assert blocks[1].startswith("PREV-DAY AVWAP + AFVP -- XRP/USD 15m")
+    failed_then_ok = ("PREV-DAY AVWAP + AFVP -- XRP/USD 4h: UNKNOWN (data unavailable: down)\n\n" + REPORT_VWAP_VP)
+    first, second = tb.extract_vwap_vp(failed_then_ok).split("\n\n")[:2]
+    assert first == "PREV-DAY AVWAP + AFVP -- XRP/USD 4h: UNKNOWN (data unavailable: down)"   # bounded at the next title
+    assert second.startswith("PREV-DAY AVWAP + AFVP -- XRP/USD 1h")
