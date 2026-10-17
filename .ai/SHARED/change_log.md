@@ -3,6 +3,9 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-17
+- `6376736` RQ5 pre-registered ADX / RSI filter test on VP-04 1H: neither filter meets the rule (inconclusive); --vwap-vp stays display only. Research only. Protected params: unchanged.
+
 ## 2026-10-16
 - `ac5e2c1` RQ4: frozen previous-day profile matches TradingView within one bucket; live chart export (page, PNG, TV drawing). Docs only. Protected params: unchanged.
 - `527986e` research_questions RQ3 (VP-04 1H CIs include zero) + RQ4 (AVWAP matches TradingView; AFVP within ~1 bucket). Docs only. Protected params: unchanged.
