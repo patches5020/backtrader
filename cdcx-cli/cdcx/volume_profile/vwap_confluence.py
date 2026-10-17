@@ -111,6 +111,8 @@ class VwapVpResult:
     htf_detail: str = ""
     execution: str = "NOT AUTHORIZED (analysis only)"
     ruleset_version: str = RULESET_VERSION
+    swing_high: Optional[float] = None           # latest swing high/low from the same market_structure run
+    swing_low: Optional[float] = None            # the structure vote uses -- display (Next/Invalidates) only
 
 
 def _closed_window(levels: PrevDayLevels, data):
@@ -289,6 +291,8 @@ def classify(levels: PrevDayLevels, data, htf: Optional[str] = None, htf_detail:
     all_c = list(data.closes[:idx[-1] + 1])
     all_h, all_l = list(data.highs[:idx[-1] + 1]), list(data.lows[:idx[-1] + 1])
     ms = market_structure.analyze(all_h, all_l, price=all_c[-1])
+    out.swing_high = next((s.price for s in reversed(ms.swings) if s.kind == "high"), None)
+    out.swing_low = next((s.price for s in reversed(ms.swings) if s.kind == "low"), None)
     bos = bos_state_module.classify_bos_state(ms, all_h, all_l, all_c, list(data.volumes[:idx[-1] + 1]))
     bos_dir = {"up": "bullish", "down": "bearish"}.get(bos.direction or "")
     fam["structure"] = bos_dir if bos.state in ("continuation", "retest_held") else None
@@ -343,25 +347,150 @@ def htf_direction(results: dict) -> tuple[str, str]:
     return "none", conf.label
 
 
+# ---------------------------------------------------------------------------
+# Context / STATUS / Next / Invalidates (2026-10-17) -- DISPLAY ONLY.
+# Context re-runs cdcx's own engine.analyze_ohlcv on CLOSED bars of the
+# section's timeframe (the summary table includes the forming candle in
+# ADX/RSI; this line doesn't). STATUS relabels the DECISION; Next and
+# Invalidates are built only from levels this section already computed
+# (swing high/low, AVWAP) and the HTF requirement. Nothing here is scored,
+# gated or read by execution. RQ5 found no evidence that ADX or RSI filters
+# improve VP-04, so they are context, never conditions.
+# ---------------------------------------------------------------------------
+CONTEXT_MIN_BARS = 60          # ADX(17) needs 2 x 17 bars before its first value; leave room to settle
+
+STATUS_LABELS = {
+    "UNKNOWN": "DATA UNKNOWN",
+    "CONFLICT": "CONFLICT -- monitor only",
+    "NONE": "MONITOR",
+    "CANDIDATE": "SETUP DEVELOPING",
+    "QUALIFIED": "CONFIRMED -- evaluate the existing gates",
+}
+
+
+@dataclass
+class Context:
+    status: str                          # "OK" | "UNKNOWN"
+    reason: str = ""
+    regime: Optional[str] = None
+    adx: Optional[float] = None
+    plus_di: Optional[float] = None
+    minus_di: Optional[float] = None
+    rsi: Optional[float] = None
+    volume_ratio: Optional[float] = None
+    last_bar_ts: Optional[float] = None  # open time (unix s) of the last CLOSED bar used
+
+
+def context_from_closed(symbol: str, data, timeframe: str, now: Optional[float] = None) -> Context:
+    """cdcx's own per-timeframe readings, recomputed on closed bars only. Fails closed (UNKNOWN)."""
+    import math
+    import time as _time
+    from dataclasses import replace
+
+    from .. import engine, no_trade_gate
+    from ..indicators.adx import calculate_adx
+
+    now = _time.time() if now is None else now
+    try:
+        market = getattr(data, "market", no_trade_gate.MARKET_24X7)
+        ts = [no_trade_gate.timestamp_to_seconds(t) for t in data.timestamps]
+        n = len(ts)
+        if n and no_trade_gate.last_bar_is_forming(ts, timeframe, now, market=market):
+            n -= 1
+        if n < CONTEXT_MIN_BARS:
+            return Context("UNKNOWN", f"{n} closed {timeframe} bars (need {CONTEXT_MIN_BARS})")
+        tf_s = no_trade_gate.timeframe_to_seconds(timeframe)
+        if market != no_trade_gate.MARKET_US_EQUITY and tf_s:
+            age = (now - (ts[n - 1] + tf_s)) / tf_s
+            if age > no_trade_gate.DEFAULT_MAX_DATA_STALENESS_BARS:
+                return Context("UNKNOWN", f"data is stale: last closed {timeframe} bar ended {age:.1f} bars ago")
+        closed = replace(data, timestamps=list(data.timestamps[:n]), opens=list(data.opens[:n]),
+                         highs=list(data.highs[:n]), lows=list(data.lows[:n]), closes=list(data.closes[:n]),
+                         volumes=list(data.volumes[:n]))
+        sig = engine.analyze_ohlcv(symbol, closed, timeframe=timeframe)
+        _, pdi, mdi = calculate_adx(closed.highs, closed.lows, closed.closes)
+        vals = (sig.adx_value, sig.rsi_value, sig.volume_ratio, pdi[-1], mdi[-1])
+        if any(v is None or (isinstance(v, float) and math.isnan(v)) for v in vals):
+            return Context("UNKNOWN", "indicator value unavailable")
+        return Context("OK", regime=sig.regime.regime, adx=sig.adx_value, plus_di=pdi[-1], minus_di=mdi[-1],
+                       rsi=sig.rsi_value, volume_ratio=sig.volume_ratio, last_bar_ts=ts[n - 1])
+    except Exception as exc:   # display only: never break the section
+        return Context("UNKNOWN", f"context unavailable ({exc})")
+
+
+def format_context(ctx: Optional[Context], timeframe: str) -> str:
+    if ctx is None:
+        return f"Context ({timeframe}, closed bars): not evaluated"
+    if ctx.status != "OK":
+        return f"Context ({timeframe}, closed bars): UNKNOWN -- {ctx.reason}"
+    lead = "+DI leads" if ctx.plus_di > ctx.minus_di else "-DI leads" if ctx.minus_di > ctx.plus_di else "DI tied"
+    return (f"Context ({timeframe}, closed bars): regime {ctx.regime.upper()} | ADX(17) {ctx.adx:.1f} {lead} | "
+            f"RSI(17) {ctx.rsi:.1f} | VOL {ctx.volume_ratio:.1f}x of 17-bar avg -- context only, not scored")
+
+
+def disposition(res: VwapVpResult, levels: PrevDayLevels, timeframe: str) -> tuple[str, str, str]:
+    """(STATUS, Next, Invalidates) from this section's own result. Never invents a level: a missing
+    swing is reported as unknown."""
+    status = STATUS_LABELS.get(res.qualification, "DATA UNKNOWN")
+    if res.qualification == "UNKNOWN" or res.status != "OK" or levels.avwap is None:
+        return "DATA UNKNOWN", "restore complete, fresh prior-session data", "-- (no thesis while data is unknown)"
+    if res.qualification == "CONFLICT":
+        return status, f"the evidence families stop disagreeing ({res.qualification_reason})", "-- (no single thesis)"
+    d = res.qualification_direction
+    if res.qualification == "NONE" or d not in ("bullish", "bearish"):
+        return status, "2+ evidence families agree in one direction", "-- (no thesis yet)"
+
+    bull = d == "bullish"
+    tf = timeframe.upper()
+    bos_lvl, opp_lvl = (res.swing_high, res.swing_low) if bull else (res.swing_low, res.swing_high)
+    side = "above" if bull else "below"
+    opp = "below" if bull else "above"
+    if res.qualification == "QUALIFIED":
+        nxt = "nothing in this section -- the existing gates (--execute / plan approval) decide"
+    else:
+        need = []
+        if res.families.get("structure") != d:
+            need.append(f"{tf} close {side} {bos_lvl:.6g} ({d} BOS)" if bos_lvl is not None
+                        else f"{d} BOS (no swing level found -- level unknown)")
+        if res.htf != d:
+            need.append(f"cdcx 2-of-4 confluence turns {d}")
+        agree = [k for k, v in res.families.items() if v == d]
+        if len(agree) < 3 and res.families.get("structure") == d:
+            need.append("a third evidence family agrees")
+        nxt = " AND ".join(need) or "-- (all section requirements met)"
+
+    inval = []
+    vw = levels.avwap.vwap
+    if res.z is not None and ((res.z < 0) if not bull else (res.z > 0)):   # only while price is on the thesis side
+        inval.append(f"{tf} close back {opp} AVWAP {vw:.6g}")
+    if opp_lvl is not None:
+        inval.append(f"{'bearish' if bull else 'bullish'} BOS: {tf} close {opp} {opp_lvl:.6g}")
+    return status, nxt, " or ".join(inval) or "UNKNOWN (no reference level available)"
+
+
 def build_section(symbol: str, data, timeframe: str, results: Optional[dict] = None,
-                  now: Optional[float] = None) -> str:
-    """The whole printable section from one intraday OHLCV series; never raises (errors -> UNKNOWN)."""
+                  now: Optional[float] = None, context_data=None) -> str:
+    """The whole printable section from one intraday OHLCV series; never raises (errors -> UNKNOWN).
+    `context_data` (optional, longer history of the same timeframe) feeds only the Context line."""
     try:
         lv = prev_day_levels(data, timeframe, now=now)
         htf, detail = htf_direction(results) if results is not None else (None, "")
         res = classify(lv, data, htf=htf, htf_detail=detail)
-        return format_vwap_vp(symbol, timeframe, lv, res, data.closes[-1])
+        ctx = context_from_closed(symbol, context_data if context_data is not None else data, timeframe, now=now)
+        return format_vwap_vp(symbol, timeframe, lv, res, data.closes[-1], ctx=ctx)
     except Exception as exc:   # analysis only: a failure here must never break the report
         return f"PREV-DAY AVWAP + AFVP -- {symbol} {timeframe}: UNKNOWN ({exc})"
 
 
-def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: VwapVpResult, price: float) -> str:
+def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: VwapVpResult, price: float,
+                   ctx: Optional[Context] = None) -> str:
     from datetime import datetime, timezone
 
     bar = "-" * 81
     lines = [bar, f"PREV-DAY AVWAP + AFVP -- {symbol} {timeframe} (analysis only, {RULESET_VERSION})".center(81), bar]
     if levels.status != "OK":
-        lines += [f"UNKNOWN -- {'; '.join(levels.reasons)}", bar]
+        lines += [f"UNKNOWN -- {'; '.join(levels.reasons)}", "STATUS: DATA UNKNOWN -- monitor only",
+                  f"Execution: {res.execution}", bar]
         return "\n".join(lines)
     f = lambda t: datetime.fromtimestamp(t, timezone.utc).strftime("%m-%d %H:%MZ")
     a = levels.avwap
@@ -382,7 +511,14 @@ def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: Vwap
         lines.append(f"  {k:<13} {res.families.get(k) or '--':<9} {res.family_detail.get(k, '')}")
     if res.htf is not None:
         lines.append(f"  {'cdcx HTF':<13} {res.htf:<9} {res.htf_detail}")
-    lines += ["", f"DECISION: {res.qualification}"
+    status, nxt, inval = disposition(res, levels, timeframe)
+    lines += ["", format_context(ctx, timeframe),
+              "", f"DECISION: {res.qualification}"
               + (f" ({res.qualification_direction})" if res.qualification_direction else "")
-              + f" -- {res.qualification_reason}", f"Execution: {res.execution}", bar]
+              + f" -- {res.qualification_reason}",
+              f"STATUS: {status}" + (f" ({res.qualification_direction})" if res.qualification_direction else "")
+              + " -- monitor only" * (res.qualification == "CANDIDATE"),
+              f"  Next:        {nxt}",
+              f"  Invalidates: {inval}",
+              f"Execution: {res.execution}", bar]
     return "\n".join(lines)

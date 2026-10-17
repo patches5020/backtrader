@@ -518,13 +518,19 @@ def _print_vwap_vp(symbol: str, timeframe: str, results: dict | None) -> None:
     if not tf_s or tf_s >= 86400:
         print(f"PREV-DAY AVWAP + AFVP: UNKNOWN (--vwap-vp needs an intraday timeframe, got {timeframe!r})")
         return
+    section_n = int(2 * 86400 / tf_s) + 10
     try:
         exchange = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret)
-        data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=int(2 * 86400 / tf_s) + 10)
+        # One fetch: the section reads the same last `section_n` bars as before; the longer history
+        # only feeds the Context line (ADX/RSI need it to settle).
+        history = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=max(section_n, settings.default_limit))
     except Exception as exc:
         print(f"PREV-DAY AVWAP + AFVP -- {symbol} {timeframe}: UNKNOWN (data unavailable: {exc})")
         return
-    print(build_section(symbol, data, timeframe, results))
+    from dataclasses import replace
+    data = replace(history, **{k: list(getattr(history, k))[-section_n:]
+                               for k in ("timestamps", "opens", "highs", "lows", "closes", "volumes")})
+    print(build_section(symbol, data, timeframe, results, context_data=history))
 
 
 def _handle_backtrader(args: argparse.Namespace) -> int:
