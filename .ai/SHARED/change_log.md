@@ -4,6 +4,7 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-17
+- `01ed186` PREV-DAY AVWAP + AFVP section on by default (cdcx-ai 1h, cdcx-equity 15m, --no-vwap-vp); Telegram /status gets a 5-line digest. Display only. Protected params: unchanged.
 - `27f3171` --vwap-vp adds Context (closed-bar regime/ADX/DI/RSI/VOL, not scored), STATUS, Next / Invalidates; cdcx-ai + cdcx-equity. Display only. Protected params: unchanged.
 - `6376736` RQ5 pre-registered ADX / RSI filter test on VP-04 1H: neither filter meets the rule (inconclusive); --vwap-vp stays display only. Research only. Protected params: unchanged.
 
