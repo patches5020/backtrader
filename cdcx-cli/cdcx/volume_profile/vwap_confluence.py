@@ -113,6 +113,9 @@ class VwapVpResult:
     ruleset_version: str = RULESET_VERSION
     swing_high: Optional[float] = None           # latest swing high/low from the same market_structure run
     swing_low: Optional[float] = None            # the structure vote uses -- display (Next/Invalidates) only
+    bos_state: Optional[str] = None              # the same bos_state run as the structure vote, as data
+    bos_direction: Optional[str] = None          # (vwap_watch reads these for retest events)
+    bos_level: Optional[float] = None
 
 
 def _closed_window(levels: PrevDayLevels, data):
@@ -295,6 +298,8 @@ def classify(levels: PrevDayLevels, data, htf: Optional[str] = None, htf_detail:
     out.swing_low = next((s.price for s in reversed(ms.swings) if s.kind == "low"), None)
     bos = bos_state_module.classify_bos_state(ms, all_h, all_l, all_c, list(data.volumes[:idx[-1] + 1]))
     bos_dir = {"up": "bullish", "down": "bearish"}.get(bos.direction or "")
+    out.bos_state, out.bos_direction = bos.state, bos_dir
+    out.bos_level = bos.level_price if bos_dir else None
     fam["structure"] = bos_dir if bos.state in ("continuation", "retest_held") else None
     det["structure"] = f"BOS {bos.state}" + (f" {bos_dir} at {bos.level_price:.6g}" if bos_dir else "")
 

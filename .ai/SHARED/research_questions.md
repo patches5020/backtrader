@@ -86,3 +86,98 @@ Research only. Nothing here changes a live plan, watcher, sizing, permission or 
   - **Decision (pre-registered rule):** neither filter is proposed. No threshold or length search follows.
     `--vwap-vp` stays display only. The A difference on XRP could only be reopened as a new pre-registered
     question on data after 2026-10-17.
+
+## RQ6 — Are vwap-watch-1 closed-bar warnings informative? (DRAFT 2026-10-18, rev 3 — NOT FROZEN, not run)
+Research only. Nothing here changes the watcher, a live plan, sizing, permission or protected parameter, and no
+result authorizes execution.
+
+**0. Freeze.** Binding only when the user freezes it. Preconditions: the watcher is committed, and the analysis
+script `cdcx/backtest/vwap_watch_rq6.py` (implementing sections 3-10 exactly) is written, unit-tested on
+synthetic data only, and committed. The freeze line then records: date/time (UTC), commit hash, and SHA-256 of
+`vwap_watch.py`, of `vwap_watch_rq6.py`, and of this RQ6 text from its heading to the end of section 10. After
+the freeze nothing in this block is edited; a correction is a new question with a new period.
+- `FROZEN: <empty = draft>`
+
+**1. What is tested.** `cdcx/volume_profile/vwap_watch.py`, WATCH_VERSION `vwap-watch-1`, ruleset `vwap-vp-1`,
+through `replay()` only (the same `evaluate` -> `step` path as the live run; HTF 2-of-4 from CLOSED bars of
+1H/4H/1D/1W via `htf_from_history`). A test of the implemented warning policy, closed-bar events only; intrabar
+warnings would be a separate versioned experiment. The watcher's closed-bar HTF and `--execute`'s forming-bar HTF
+differ by design; neither changes for or during RQ6, and a disagreement between them is not a watcher defect.
+
+**2. Data and periods.** XRP/USD and XLM/USD; events on 1H; 4H/1D/1W only for the HTF read. Source: Crypto.com
+public candles as returned by cdcx's `CryptoComExchange.fetch_ohlcv` (bar open time UTC, OHLC, volume). Each
+series is fetched once, saved, identified by SHA-256; the run reads only those files.
+- **Confirmatory (prospective), the only period that can give a verdict:** S = 00:00Z of the first UTC day that
+  begins at least 24 h after the FROZEN timestamp; E = S + 56 days. Counted events: bar open in [S, E).
+  Fetched once at or after E + 24 h: 1H from S - 60 days to E + 1 day; 4H/1D/1W from S - 400 days to E + 1 day.
+  The live watcher is not scheduled for this.
+- **Exploratory (historical) 2025-06-01 00:00Z -> 2026-05-31 00:00Z:** already used for VP-04 outcomes in RQ3/RQ5.
+  Same procedure, reported as descriptive/debugging evidence only, never a verdict.
+- 2026-10-01 -> S never counts.
+- **Warm-up:** each replay starts at S - 7 days. The first valid bar is the watcher's BASELINE (pre-existing
+  conditions, not counted).
+
+**3. Eligibility.** Bar t is eligible if the watcher's snapshot at t is VALID and bars t+1..t+12 all exist with no
+timestamp gap (each step exactly 3600 s). Events at non-eligible bars are dropped and the same bars are dropped from
+the comparator. Dropped counts are reported.
+
+**4. Outcome (identical for events and comparator).**
+- C_t = close of bar t.
+- A_t = cdcx `atr_ema_variant1.calculate_atr(highs, lows, closes, length=11)` (11 = cdcx `ATR_LENGTH`) on the frozen
+  1H series from its first bar: TR_0 = H_0 - L_0; TR_i = max(H_i - L_i, |H_i - C_(i-1)|, |L_i - C_(i-1)|);
+  ATR_10 = (TR_0 + ... + TR_10) / 11 (the first ATR value; ATR before index 10 is undefined);
+  ATR_i = (ATR_(i-1) x 10 + TR_i) / 11 for i >= 11 (Wilder / Pine `ta.rma`). Value at index t (bars <= t only;
+  the 60-day lead-in makes the seed irrelevant).
+- U = C_t + A_t, D = C_t - A_t. For k = 1..12 in order with bar t+k's high H and low L: H >= U and L <= D ->
+  AMBIGUOUS, stop; H >= U -> UP, stop; L <= D -> DOWN, stop. No touch in 12 bars -> NONE.
+- favourable for d = UP if d bullish, DOWN if bearish; adverse = the other.
+- AMBIGUOUS and NONE are never excluded: they stay in every denominator (events and comparator) as non-hits, and
+  their counts and rates are reported per family, so a family cannot look better by dropping hard cases.
+
+**5. Hits per family.**
+- entry: hit = favourable for d. Primary event: ENTRY_SETUP. Secondary: ENTRY_WATCH, ENTRY_CONFIRMATION_CANDIDATE.
+- retest: RETEST_HOLD hit = favourable for d; RETEST_FAILURE hit = adverse for d; pooled for the primary test.
+  A test of the implemented retest policy (VP-03 at most once per anchor per state), not a count of all
+  pullbacks or retests.
+- deterioration: SETUP_DETERIORATION, AVWAP_LOST, STRUCTURAL_INVALIDATION; hit = adverse for d; pooled.
+- Counted only, not tested: WATCH_CLEARED, EXPIRED, DATA_*, BASELINE; catch-up records cannot occur in replay.
+- Lead time (descriptive, no test): bars from an episode's first ENTRY_WATCH to its ENTRY_SETUP and
+  ENTRY_CONFIRMATION_CANDIDATE (same symbol, direction, anchor); median and IQR.
+
+**6. De-duplication.** Primary: the first event of each event type per (symbol, direction, UTC day of its bar).
+Secondary: all events.
+
+**7. Comparator and statistic.** For family f, symbol s, direction d: b(s,d,f) = share of all eligible bars of the
+period (in s) whose outcome is a hit under f's rule for direction d. With E_f the primary events of f:
+Delta_f = (1/|E_f|) x sum over e in E_f of (hit_e - b(s_e, d_e, f)).
+In the pooled retest family each event uses its own type's rule (RETEST_HOLD favourable, RETEST_FAILURE
+adverse), for its hit and for its b.
+
+**8. Inference (exact procedure).** Blocks = (symbol, UTC day) pairs of the period; each eligible bar and each
+event belongs to the block of its own bar t. N = 10,000 resamples with `random.Random(20261018)`, one generator
+for the whole run, families processed in the order entry, retest, deterioration. Each resample: draw B blocks
+with replacement (`rng.choices(blocks, k=B)`, B = number of blocks); take, with multiplicity, all eligible bars
+and all primary events of the drawn blocks; recompute every b from those bars and Delta*_f from those events.
+Event and comparator bars come from the same drawn blocks (paired), so dependence within a block is kept.
+A resample with no events of f leaves Delta*_f undefined; if more than 100 of 10,000 are undefined, f is
+"insufficient sample". Interval: sort the defined Delta* values (n of them); lower = value at index
+int(n x 0.05/6), upper = value at index int(n x (1 - 0.05/6)) - 1 (Bonferroni: 5% family-wise over 3 tests,
+same indexing convention as RQ5's `bootstrap_diff_ci`). Sensitivity (reported, not decisive): the same with
+2-day blocks (pairs of UTC days counted from S), because 12-bar outcomes can cross midnight; it is a separate
+run with its own `random.Random(20261018)`, so it never shifts the primary draws.
+- **Minimum sample:** a primary test runs only if f has >= 30 primary events in >= 10 distinct blocks; otherwise
+  "insufficient sample" (descriptive only).
+
+**9. Decision rule (confirmatory period only).** f is "informative" only if lower > 0. Anything else = inconclusive /
+no. After any result is seen: no change to horizon (12), barrier (1.0 x ATR(11)), state rules, de-duplication,
+comparator or procedure; a change is a new version and a new question on new data. "Informative" adds no weight or
+alert by itself -- that needs a separate user-approved proposal. No interim looks: the confirmatory data is
+fetched and analysed once, after E + 24 h.
+
+**10. Reported.** Per family and event type: counts (raw, primary, dropped), UP/DOWN/AMBIGUOUS/NONE rates, hit
+rates, base rates, Delta, interval, undefined-resample count; per symbol and the exploratory period as reference;
+false-warning rate = adverse share (entry, retest-hold) or favourable share (deterioration). Every counted event
+keeps its journal key, bar and evidence (audit trail).
+
+**Known limits.** ENTRY_CONFIRMATION_CANDIDATE needs the HTF 2-of-4, which read "none" through most of October
+2026, so it may be too rare to test. 8 weeks x 2 symbols detects only large differences.
