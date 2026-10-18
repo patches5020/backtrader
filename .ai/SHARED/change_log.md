@@ -3,6 +3,9 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-18
+- `72e247b` vwap-watch-1 AVWAP shadow watcher (monitor-only, closed bars, journal, not scheduled) + RQ6 analysis script (refuses to run until RQ6 is FROZEN; synthetic tests only); RQ6 draft rev 3 NOT frozen. Research only. Protected params: unchanged.
+
 ## 2026-10-17
 - `e7ea89f` --vwap-vp accepts several timeframes (one section each; daily/weekly skipped) in cdcx-ai + cdcx-equity; Telegram digest covers each. Display only. Protected params: unchanged.
 - `46c8685` XLM VP plans re-armed 2026-10-17 15:26Z (swing high 0.18557 / low 0.17865, expires 2026-10-24 15:26Z); bull 1/12, bear 4/12, approval not given. Plan data only. Protected params: unchanged.
