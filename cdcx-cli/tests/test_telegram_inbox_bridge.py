@@ -346,7 +346,7 @@ def test_http_import_loads_no_telegram_client_and_needs_no_telegram_token(tmp_pa
             "print(json.dumps(sorted(m for m in sys.modules if m in ('cdcx.telegram_send', 'cdcx.telegram_bot', "
             "'dotenv') or m.startswith(('urllib.request', 'requests')))))")
     out = subprocess.run([sys.executable, "-c", code], env=env, cwd=CDCX_DIR.parent,
-                         capture_output=True, text=True, timeout=60)
+                         capture_output=True, text=True, timeout=300)   # generous: ~10 s import idle, 7x slower under load
     assert out.returncode == 0, out.stderr
     loaded = json.loads(out.stdout.strip().splitlines()[-1])
     assert [m for m in loaded if m.startswith("cdcx.") or m == "dotenv"] == []
