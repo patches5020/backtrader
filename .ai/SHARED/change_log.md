@@ -3,6 +3,11 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-19
+- `80fc625` RQ6 FROZEN 2026-10-19T15:21:06Z (user approved): commit f19e1c0 + SHA-256 of vwap_watch.py, vwap_watch_rq6.py, RQ6 text. Confirmatory 2026-10-21 -> 2026-12-16; single analysis at/after 2026-12-17 00:00Z. Research only. Protected params: unchanged.
+- `f19e1c0` tests: telegram-inbox import probes 60 -> 300 s (most likely cause of the 1/789 loaded-run failure). Test only. Protected params: unchanged.
+- vwap-watch-1 first live run (XRP/USD + XLM/USD 1h, journal only, monitor only); hourly Windows task pending user registration.
+
 ## 2026-10-18
 - `72e247b` vwap-watch-1 AVWAP shadow watcher (monitor-only, closed bars, journal, not scheduled) + RQ6 analysis script (refuses to run until RQ6 is FROZEN; synthetic tests only); RQ6 draft rev 3 NOT frozen. Research only. Protected params: unchanged.
 
