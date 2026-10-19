@@ -17,5 +17,6 @@ execution default or protected parameter changed.
   before the analysis (a change = a new question).
 - **vwap-watch-1 live:** first run 2026-10-19 15:23Z, XRP/USD + XLM/USD 1h, journal only (no `--notify`), BASELINE
   written to `cdcx-cli/trading/vwap_watch/`. Runner: `cdcx-cli/trading/status/vwap_watch_hourly.sh` (gitignored,
-  in the zip). Windows task registration was NOT done by Claude (blocked by its permission classifier) — the user
-  registers it.
+  in the zip). Windows task "cdcx vwap-watch hourly" registered 2026-10-19 (hourly from 11:02 CDT, interactive only);
+  a Task Scheduler run at 15:31Z exited 0 for both symbols with no new events and no duplicate journal records.
+- Pushed to origin/master; backups copied to D:\cdcx-code-backups (SHA-256 verified).
