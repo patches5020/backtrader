@@ -87,7 +87,7 @@ Research only. Nothing here changes a live plan, watcher, sizing, permission or 
     `--vwap-vp` stays display only. The A difference on XRP could only be reopened as a new pre-registered
     question on data after 2026-10-17.
 
-## RQ6 — Are vwap-watch-1 closed-bar warnings informative? (DRAFT 2026-10-18, rev 3 — NOT FROZEN, not run)
+## RQ6 — Are vwap-watch-1 closed-bar warnings informative? (rev 3 — FROZEN 2026-10-19T15:21:06Z, not run)
 Research only. Nothing here changes the watcher, a live plan, sizing, permission or protected parameter, and no
 result authorizes execution.
 
@@ -96,7 +96,9 @@ script `cdcx/backtest/vwap_watch_rq6.py` (implementing sections 3-10 exactly) is
 synthetic data only, and committed. The freeze line then records: date/time (UTC), commit hash, and SHA-256 of
 `vwap_watch.py`, of `vwap_watch_rq6.py`, and of this RQ6 text from its heading to the end of section 10. After
 the freeze nothing in this block is edited; a correction is a new question with a new period.
-- `FROZEN: <empty = draft>`
+- `FROZEN: 2026-10-19T15:21:06Z commit f19e1c0 vwap_watch.py=815325516f6d43718db77f44be288c3cc73c5225e87a77ccabd4d271159f0cdf vwap_watch_rq6.py=34c8d309c40529f1c4362691a22dc7c069af01c58d7b2f338ec6ea4556d40707 rq6_text=d154c94f76a938819787b75c4f0eb1855ac835d92bb4440d4939e8ae5cc0c631`
+  (rq6_text = this block as committed in f19e1c0, before this line and the heading were filled in.
+  S = 2026-10-21 00:00Z, E = 2026-12-16 00:00Z; fetch/analyse once, at or after 2026-12-17 00:00Z.)
 
 **1. What is tested.** `cdcx/volume_profile/vwap_watch.py`, WATCH_VERSION `vwap-watch-1`, ruleset `vwap-vp-1`,
 through `replay()` only (the same `evaluate` -> `step` path as the live run; HTF 2-of-4 from CLOSED bars of
