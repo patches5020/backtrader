@@ -78,8 +78,14 @@ def test_freeze_hashes_cover_the_three_items():
     assert set(h) == {"vwap_watch.py", "vwap_watch_rq6.py", "rq6_text"} and all(len(v) == 64 for v in h.values())
 
 
-def test_the_real_rq6_block_is_still_a_draft():
-    assert rq.frozen_at() is None
+def test_the_real_rq6_block_is_frozen_and_the_frozen_code_is_unchanged():
+    from datetime import datetime, timezone
+    assert rq.frozen_at() == datetime(2026, 10, 19, 15, 21, 6, tzinfo=timezone.utc).timestamp()
+    line = next(w for w in rq.rq6_text().splitlines() if "`FROZEN:" in w)
+    recorded = dict(w.split("=", 1) for w in line.strip("-` ").split() if "=" in w)
+    now = rq.freeze_hashes()
+    for name in ("vwap_watch.py", "vwap_watch_rq6.py"):   # rq6_text was hashed before the line was filled in
+        assert recorded[name] == now[name], f"{name} changed after the RQ6 freeze -- a change is a new question"
 
 
 # ------------------------------------------------------------------ ATR / outcome / eligibility
