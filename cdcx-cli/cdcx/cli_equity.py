@@ -543,6 +543,16 @@ def main(argv: list[str] | None = None) -> int:
             print()
             print(avp_rejection.format_avp_section(
                 args.symbol, avp_rejection.build_avp_by_tf(args.symbol, raw_data_by_tf, timeframes=avp_tfs)))
+            # Analysis-only HTF AVWAP (htf_avwap.py) -- same section as cdcx-ai's --structure,
+            # anchored at each requested 4H/1D/1W AVP's own anchor bar. Printed last; never read
+            # by confluence, sizing or --execute. Best-effort: a failure only skips this section.
+            try:
+                from . import htf_avwap
+                print()
+                print(htf_avwap.format_htf_avwap_section(args.symbol, htf_avwap.build_htf_avwap(
+                    raw_data_by_tf, signals=results)))
+            except Exception as exc:
+                print(f"(HTF AVWAP context unavailable: {exc})", file=sys.stderr)
 
         if not any_success:
             return 1

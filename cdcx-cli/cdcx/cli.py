@@ -434,7 +434,8 @@ def _lower_structure_context(symbol: str, limit: int, cache: dict, lower: list[s
     return lines
 
 
-def _print_structure_setup_section(symbol: str, limit: int, cache: dict, timeframes: Sequence[str] = ()) -> bool:
+def _print_structure_setup_section(symbol: str, limit: int, cache: dict, timeframes: Sequence[str] = (),
+                                   signals: dict | None = None) -> bool:
     """Print the combined 1W/1D/4H/1H LONG/SHORT trigger evaluation, reusing
     whatever per-timeframe structure data the report loop already fetched
     (via `_print_merged_structure_block`) and only fetching what's still
@@ -504,6 +505,17 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict, timefra
     avp_tfs = [*avp_rejection.TIMEFRAMES, *[tf for tf in lower if tf in cache]]
     print(avp_rejection.format_avp_section(
         symbol, avp_rejection.build_avp_by_tf(symbol, {tf: cache[tf][1] for tf in avp_tfs}, timeframes=avp_tfs)))
+
+    # Analysis-only HTF AVWAP (htf_avwap.py), anchored at each 4H/1D/1W AVP's
+    # own anchor bar. Printed last so every section above is untouched; never
+    # read by the gate, the grade or execution. Best-effort like the grade.
+    try:
+        from . import htf_avwap
+        print()
+        print(htf_avwap.format_htf_avwap_section(symbol, htf_avwap.build_htf_avwap(
+            {tf: cache[tf][1] for tf in htf_avwap.TIMEFRAMES}, signals=signals)))
+    except Exception as exc:
+        print(f"(HTF AVWAP context unavailable: {exc})", file=sys.stderr)
 
     return True
 
@@ -1604,7 +1616,7 @@ def main(argv: list[str] | None = None) -> int:
         # Final combined LONG/SHORT trigger evaluation across all four roles,
         # reusing whatever the per-timeframe blocks above already fetched.
         if args.structure:
-            _print_structure_setup_section(args.symbol, args.limit, structure_cache, timeframes)
+            _print_structure_setup_section(args.symbol, args.limit, structure_cache, timeframes, signals=results)
 
         return result
 
@@ -1638,7 +1650,8 @@ def main(argv: list[str] | None = None) -> int:
         result = 1
 
     if args.structure:
-        _print_structure_setup_section(args.symbol, args.limit, structure_cache, [timeframe])
+        _print_structure_setup_section(args.symbol, args.limit, structure_cache, [timeframe],
+                                       signals={timeframe: signal})
 
     return result
 

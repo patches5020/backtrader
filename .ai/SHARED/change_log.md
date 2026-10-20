@@ -3,6 +3,9 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-20
+- HTF AVWAP context (cdcx-ai --structure, cdcx-equity --structure-report): 4H/1D/1W AVWAP anchored at each AVP's own anchor bar (+ 4H decline-start), closed bars, explicit unknowns; existing report byte-identical above the new section; 840 passed. Analysis only. Protected params: unchanged.
+
 ## 2026-10-19
 - RQ6 test fix: draft-only assertion (failed after the freeze) replaced by a frozen-time + frozen-code-hash check; 812 passed. Test only. Protected params: unchanged.
 - `80fc625` RQ6 FROZEN 2026-10-19T15:21:06Z (user approved): commit f19e1c0 + SHA-256 of vwap_watch.py, vwap_watch_rq6.py, RQ6 text. Confirmatory 2026-10-21 -> 2026-12-16; single analysis at/after 2026-12-17 00:00Z. Research only. Protected params: unchanged.

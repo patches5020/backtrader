@@ -134,6 +134,14 @@ class TradeSignal:
     vp_setup_type: str = "none"             # "poc_bounce" | "value_area_reversal" | "value_area_breakout" | "none"
     vp_setup_direction: Optional[str] = None  # "up" | "down"
 
+    # Anchored Volume Profile anchor + levels (volume_profile_anchor.py) --
+    # display/context only, never read back by scoring. Carried so the HTF
+    # AVWAP context (htf_avwap.py) anchors at exactly the bar this AVP used.
+    anchored_vp_anchor_ts: Optional[float] = None   # anchor bar OPEN time, unix seconds
+    anchored_vp_poc: float = 0.0
+    anchored_vp_vah: float = 0.0
+    anchored_vp_val: float = 0.0
+
 
 def _round_price(value: float, sig_figs: int = 6) -> float:
     """
@@ -564,7 +572,19 @@ def analyze_ohlcv(
         volume_ratio=round(volume_ratio, 2),
         vp_setup_type=vp_setup_result.setup_type,
         vp_setup_direction=vp_setup_result.direction,
+        anchored_vp_anchor_ts=_anchor_ts(data.timestamps, anchored_vp_result.anchor_index),
+        anchored_vp_poc=anchored_vp_result.poc,
+        anchored_vp_vah=anchored_vp_result.vah,
+        anchored_vp_val=anchored_vp_result.val,
     )
+
+
+def _anchor_ts(timestamps, index: int) -> Optional[float]:
+    """Open time (unix seconds) of bar `index`; None when timestamps don't cover it."""
+    if not timestamps or not 0 <= index < len(timestamps):
+        return None
+    ts = timestamps[index]
+    return ts / 1000 if ts > 1e11 else ts   # Crypto.com sends ms, the equity sources seconds
 
 
 def format_report(signal: TradeSignal) -> str:

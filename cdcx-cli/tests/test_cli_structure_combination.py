@@ -158,7 +158,7 @@ def test_timeframes_execute_run_structure_section_prints_after_execute_plan(monk
         print("EXECUTE PLAN HERE")
         return 0
 
-    def fake_setup_section(symbol, limit, cache, timeframes=()):
+    def fake_setup_section(symbol, limit, cache, timeframes=(), **kwargs):  # kwargs: signals= (HTF AVWAP)
         order.append("structure_setup")
         print("FINAL SETUP SECTION")
         return True
