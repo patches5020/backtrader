@@ -28,6 +28,7 @@ RESET = "\033[0m"
 RED = "\033[31m"
 YELLOW = "\033[33m"
 GREEN = "\033[32m"
+BLUE = "\033[34m"
 BOLD = "\033[1m"
 
 
@@ -99,3 +100,11 @@ POC_COLOR = YELLOW
 
 def colorize_poc(text: str) -> str:
     return colorize(text, POC_COLOR)
+
+
+# (Anchored) VWAP (user's colour choice, 2026-10-20): blue.
+VWAP_COLOR = BLUE
+
+
+def colorize_vwap(text: str) -> str:
+    return colorize(text, VWAP_COLOR)

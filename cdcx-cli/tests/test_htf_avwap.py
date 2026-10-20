@@ -329,3 +329,42 @@ def test_equity_daily_bar_from_friday_is_not_stale_over_the_weekend():
     monday = datetime(2026, 10, 19, 12, tzinfo=timezone.utc).timestamp()
     assert not htf_avwap._is_stale(friday, "1d", monday, "us_equity")
     assert htf_avwap._is_stale(friday, "1d", monday, "24x7")                   # crypto has no weekend gap
+
+
+# --- level colours (user's choice, 2026-10-20) --------------------------------
+
+def _colour_section(monkeypatch, env):
+    for k in ("FORCE_COLOR", "NO_COLOR"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv(env, "1")
+    data = _series("4h", seed=3)
+    ctxs = htf_avwap.build_htf_avwap({"4h": data}, signals={"4h": _sig("4h", data)}, now=NOW,
+                                     timeframes=["4h"])
+    return htf_avwap.format_htf_avwap_section("XRP/USD", ctxs)
+
+
+def test_poc_yellow_vah_red_val_green_vwap_blue_when_color_forced(monkeypatch):
+    from cdcx.utils.color import BLUE, GREEN, RED, RESET, YELLOW
+    out = _colour_section(monkeypatch, "FORCE_COLOR")
+    avp = next(l for l in out.splitlines() if "Same-anchor AVP" in l)
+    assert re.search(re.escape(YELLOW) + r"POC [\d.]+" + re.escape(RESET), avp)
+    assert re.search(re.escape(RED) + r"VAH [\d.]+" + re.escape(RESET), avp)
+    assert re.search(re.escape(GREEN) + r"VAL [\d.]+" + re.escape(RESET), avp)
+    vwap = next(l for l in out.splitlines() if "sigma" in l and "closed bars" in l)
+    assert re.search(re.escape(BLUE) + r"AVWAP [\d.]+" + re.escape(RESET), vwap)
+
+
+def test_htf_avwap_section_is_plain_text_without_color(monkeypatch):
+    out = _colour_section(monkeypatch, "NO_COLOR")
+    assert "\033[" not in out and "Same-anchor AVP" in out and "  AVWAP " in out
+
+
+def test_equity_htf_avwap_section_uses_the_same_level_colours(monkeypatch):
+    from cdcx.utils.color import BLUE, GREEN, RED, YELLOW
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    _, out = _run_equity_report(monkeypatch)
+    section = out[out.index("HTF AVWAP CONTEXT"):]
+    avp = next(l for l in section.splitlines() if "Same-anchor AVP" in l)
+    assert all(c in avp for c in (YELLOW + "POC", RED + "VAH", GREEN + "VAL"))
+    assert any(BLUE + "AVWAP" in l for l in section.splitlines())

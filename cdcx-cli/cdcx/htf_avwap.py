@@ -52,6 +52,7 @@ from . import no_trade_gate
 from .config import settings
 from .indicators import anchored_vwap as avwap_module
 from .indicators import market_structure, volume_profile_anchor
+from .utils.color import colorize_poc, colorize_vah, colorize_val, colorize_vwap
 
 TIMEFRAMES = ("4h", "1d", "1w")
 STALE_AFTER_BARS = 2          # newest closed bar ended > 2 periods ago -> a bar is missing
@@ -277,7 +278,8 @@ def format_htf_avwap_section(symbol: str, contexts: list[HtfAvwapContext]) -> st
             lines.append("  Confluence: unknown")
             continue
         r = ctx.avwap
-        lines.append(f"  AVWAP {_p(r.vwap)}  sigma {_p(r.sigma)}  ({r.bars_used} closed bars, {r.source})")
+        # POC yellow / VAH red / VAL green (as elsewhere) and VWAP blue -- user's choice, 2026-10-20
+        lines.append(f"  {colorize_vwap(f'AVWAP {_p(r.vwap)}')}  sigma {_p(r.sigma)}  ({r.bars_used} closed bars, {r.source})")
         lines.append("  Bands: " + "  ".join(f"+/-{k}: {_p(lo)} / {_p(hi)}" for k, (lo, hi) in sorted(r.bands.items())))
         ev = f", {ctx.event} on this close" if ctx.event != "none" else ""
         lines.append(f"  Closed close {_p(ctx.closed_close)} is {ctx.relation.upper()} AVWAP "
@@ -288,7 +290,8 @@ def format_htf_avwap_section(symbol: str, contexts: list[HtfAvwapContext]) -> st
         if ctx.avp_levels:
             poc, vah, val = ctx.avp_levels
             basis = "closed bars" if ctx.anchor_type == ANCHOR_DECLINE_START else "engine AVP, incl. forming bar"
-            lines.append(f"  Same-anchor AVP ({basis}): POC {_p(poc)}  VAH {_p(vah)}  VAL {_p(val)}"
+            lines.append(f"  Same-anchor AVP ({basis}): {colorize_poc(f'POC {_p(poc)}')}  "
+                         f"{colorize_vah(f'VAH {_p(vah)}')}  {colorize_val(f'VAL {_p(val)}')}"
                          f" -> close vs POC: {ctx.avp_side}")
         rej = f" | AVP rejection: {ctx.rejection_state}" if ctx.rejection_state else ""
         lines.append(f"  Strict BOS: {ctx.structure_side}{rej}")
