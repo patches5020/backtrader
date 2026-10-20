@@ -148,3 +148,17 @@ def test_htf_direction_uses_the_execute_filter():
 def test_build_section_never_raises():
     text = vc.build_section("TEST/USD", object(), "5m")
     assert "UNKNOWN" in text
+
+
+def test_avwap_line_blue_when_color_forced_plain_otherwise(monkeypatch):
+    """AVWAP is blue (user's choice, 2026-10-20), next to the yellow/red/green POC/VAH/VAL."""
+    from cdcx.utils.color import BLUE, RESET
+    lv, res, d = _run(_zigzag(), today_vol=300.0)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    line = next(l for l in vc.format_vwap_vp("TEST/USD", "1h", lv, res, d.closes[-1]).splitlines()
+                if "AVWAP from" in l)
+    assert line.startswith(BLUE, len("\033[1m")) and f"{lv.avwap.vwap:.6g}{RESET}" in line
+    monkeypatch.delenv("FORCE_COLOR")
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert "\033[" not in vc.format_vwap_vp("TEST/USD", "1h", lv, res, d.closes[-1])

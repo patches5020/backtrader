@@ -68,7 +68,7 @@ from typing import Optional
 from .. import bos_state as bos_state_module
 from ..indicators import fair_value_gap, market_structure
 from ..confluence import ALLOWED_TIMEFRAMES, evaluate_confluence
-from ..utils.color import colorize_poc, colorize_vah, colorize_val
+from ..utils.color import colorize_poc, colorize_vah, colorize_val, colorize_vwap
 from .prev_day import PrevDayLevels, prev_day_levels
 
 RULESET_VERSION = "vwap-vp-1"
@@ -518,7 +518,7 @@ def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: Vwap
         f"Prior session {f(levels.session_start)} -> {f(levels.session_end)} ({levels.session_bars} bars), frozen:",
         f"  {colorize_poc(f'POC {levels.poc:.6g}')} | {colorize_vah(f'VAH {levels.vah:.6g}')} | "
         f"{colorize_val(f'VAL {levels.val:.6g}')} | HVN {levels.hvn:.6g} | LVN {levels.lvn:.6g}",
-        f"AVWAP from {f(a.anchor_ts)} ({a.source}): {a.vwap:.6g}  sigma {a.sigma:.6g}  (last closed bar {f(a.last_bar_ts)})",
+        f"{colorize_vwap(f'AVWAP from {f(a.anchor_ts)} ({a.source}): {a.vwap:.6g}')}  sigma {a.sigma:.6g}  (last closed bar {f(a.last_bar_ts)})",
         "  " + " | ".join(f"+/-{k}: {lo:.6g} / {hi:.6g}" for k, (lo, hi) in a.bands.items()),
         f"Price {price:.6g} = {res.z:+.2f} sigma | Condition: {res.condition}"
         + (f" ({res.condition_direction})" if res.condition_direction else "") + f" -- {res.condition_detail}",
