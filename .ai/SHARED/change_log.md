@@ -4,6 +4,7 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-20
+- AVWAP line + sigma bands in TradingView colours (VWAP #1E88E5, +1..3 #F23645, -1..3 #4CAF50) in HTF AVWAP CONTEXT and PREV-DAY AVWAP + AFVP, cdcx-ai + cdcx-equity (TTY only); 844 passed. Display only; RQ6 frozen files untouched. Protected params: unchanged.
 - PREV-DAY AVWAP + AFVP section: AVWAP line blue (next to yellow POC / red VAH / green VAL; TTY only); 844 passed. Display only; RQ6 frozen files untouched. Protected params: unchanged.
 - HTF AVWAP context colours (cdcx-ai + cdcx-equity): POC yellow, VAH red, VAL green, AVWAP blue (TTY only; NO_COLOR/piped stays plain); 843 passed. Display only. Protected params: unchanged.
 - HTF AVWAP context (cdcx-ai --structure, cdcx-equity --structure-report): 4H/1D/1W AVWAP anchored at each AVP's own anchor bar (+ 4H decline-start), closed bars, explicit unknowns; existing report byte-identical above the new section; 840 passed. Analysis only. Protected params: unchanged.

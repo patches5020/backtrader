@@ -344,7 +344,7 @@ def _colour_section(monkeypatch, env):
 
 
 def test_poc_yellow_vah_red_val_green_vwap_blue_when_color_forced(monkeypatch):
-    from cdcx.utils.color import BLUE, GREEN, RED, RESET, YELLOW
+    from cdcx.utils.color import GREEN, RED, RESET, VWAP_COLOR as BLUE, YELLOW
     out = _colour_section(monkeypatch, "FORCE_COLOR")
     avp = next(l for l in out.splitlines() if "Same-anchor AVP" in l)
     assert re.search(re.escape(YELLOW) + r"POC [\d.]+" + re.escape(RESET), avp)
@@ -360,7 +360,7 @@ def test_htf_avwap_section_is_plain_text_without_color(monkeypatch):
 
 
 def test_equity_htf_avwap_section_uses_the_same_level_colours(monkeypatch):
-    from cdcx.utils.color import BLUE, GREEN, RED, YELLOW
+    from cdcx.utils.color import GREEN, RED, VWAP_COLOR as BLUE, YELLOW
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setenv("FORCE_COLOR", "1")
     _, out = _run_equity_report(monkeypatch)

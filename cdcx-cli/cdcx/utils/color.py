@@ -102,9 +102,33 @@ def colorize_poc(text: str) -> str:
     return colorize(text, POC_COLOR)
 
 
-# (Anchored) VWAP (user's colour choice, 2026-10-20): blue.
-VWAP_COLOR = BLUE
+
+
+def rgb(hex_color: str) -> str:
+    """24-bit (truecolor) foreground SGR code for a "#RRGGBB" hex colour."""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"\033[38;2;{r};{g};{b}m"
+
+
+# AVWAP sigma bands (user's colour choice, 2026-10-20): upper (+k) red,
+# lower (-k) green, using the exact hexes of the TradingView Anchored VWAP
+# drawing on the 1D chart (UpperBand* #F23645, LowerBand* #4CAF50).
+AVWAP_UPPER_BAND_COLOR = rgb("#F23645")
+AVWAP_LOWER_BAND_COLOR = rgb("#4CAF50")
+
+# (Anchored) VWAP (user's colour choice, 2026-10-20): blue, matching the
+# TradingView Anchored VWAP drawing's VWAP line (#1E88E5).
+VWAP_COLOR = rgb("#1E88E5")
 
 
 def colorize_vwap(text: str) -> str:
     return colorize(text, VWAP_COLOR)
+
+
+def colorize_avwap_upper(text: str) -> str:
+    return colorize(text, AVWAP_UPPER_BAND_COLOR)
+
+
+def colorize_avwap_lower(text: str) -> str:
+    return colorize(text, AVWAP_LOWER_BAND_COLOR)

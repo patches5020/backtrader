@@ -152,7 +152,7 @@ def test_build_section_never_raises():
 
 def test_avwap_line_blue_when_color_forced_plain_otherwise(monkeypatch):
     """AVWAP is blue (user's choice, 2026-10-20), next to the yellow/red/green POC/VAH/VAL."""
-    from cdcx.utils.color import BLUE, RESET
+    from cdcx.utils.color import RESET, VWAP_COLOR as BLUE
     lv, res, d = _run(_zigzag(), today_vol=300.0)
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setenv("FORCE_COLOR", "1")
