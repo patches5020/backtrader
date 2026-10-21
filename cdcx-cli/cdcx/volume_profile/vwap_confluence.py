@@ -525,6 +525,15 @@ def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: Vwap
         + (f" ({res.condition_direction})" if res.condition_direction else "") + f" -- {res.condition_detail}",
         "",
     ]
+    lines += format_setup_lines(res, levels, timeframe, ctx) + [bar]
+    return "\n".join(lines)
+
+
+def format_setup_lines(res: VwapVpResult, levels: PrevDayLevels, timeframe: str,
+                       ctx: Optional[Context] = None) -> list[str]:
+    """VP-01..VP-05, the evidence families, Context and DECISION / STATUS / Next / Invalidates /
+    Execution -- shared by this section and the HTF AVWAP context (htf_avwap.py)."""
+    lines = []
     for s in res.setups:
         lines.append(f"{s.code} {s.name:<20} {s.state:<11} {s.detail}")
     lines.append("")
@@ -541,5 +550,5 @@ def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: Vwap
               + " -- monitor only" * (res.qualification == "CANDIDATE"),
               f"  Next:        {nxt}",
               f"  Invalidates: {inval}",
-              f"Execution: {res.execution}", bar]
-    return "\n".join(lines)
+              f"Execution: {res.execution}"]
+    return lines

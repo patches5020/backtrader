@@ -513,7 +513,7 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict, timefra
         from . import htf_avwap
         print()
         print(htf_avwap.format_htf_avwap_section(symbol, htf_avwap.build_htf_avwap(
-            {tf: cache[tf][1] for tf in htf_avwap.TIMEFRAMES}, signals=signals)))
+            {tf: cache[tf][1] for tf in htf_avwap.TIMEFRAMES}, signals=signals, symbol=symbol)))
     except Exception as exc:
         print(f"(HTF AVWAP context unavailable: {exc})", file=sys.stderr)
 

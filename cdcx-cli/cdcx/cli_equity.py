@@ -550,7 +550,7 @@ def main(argv: list[str] | None = None) -> int:
                 from . import htf_avwap
                 print()
                 print(htf_avwap.format_htf_avwap_section(args.symbol, htf_avwap.build_htf_avwap(
-                    raw_data_by_tf, signals=results)))
+                    raw_data_by_tf, signals=results, symbol=args.symbol)))
             except Exception as exc:
                 print(f"(HTF AVWAP context unavailable: {exc})", file=sys.stderr)
 

@@ -38,6 +38,13 @@ The still-forming bar only appears as a "provisional" price line.
                     too few closed bars) / invalid (zero volume, anchor bar
                     missing) / stale (newest closed bar ended more than
                     STALE_AFTER_BARS periods ago). Anything but valid -> unknown.
+
+Setup block (2026-10-21, same format as PREV-DAY AVWAP + AFVP): for each valid
+context with same-anchor AVP levels, vwap_confluence.classify runs unchanged on
+this AVWAP and that AVP's POC/VAH/VAL -- VP-01..VP-05, the evidence families,
+Context (closed bars), DECISION / STATUS / Next / Invalidates / Execution. The
+LTF "today" window becomes the last VP_WINDOW_BARS closed bars of the
+timeframe. Display only; execution stays NOT AUTHORIZED.
 """
 from __future__ import annotations
 
@@ -61,6 +68,7 @@ EQUITY_WEEKEND_SLACK = 3 * 86400  # equity sessions skip weekends/holidays
 
 ANCHOR_CDCX_AVP = "cdcx AVP (lowest close, swing lookback)"
 ANCHOR_DECLINE_START = "AVP rejection (decline start, highest high)"
+VP_WINDOW_BARS = 6            # HTF stand-in for the LTF section's "today"
 
 
 @dataclass
@@ -85,6 +93,10 @@ class HtfAvwapContext:
     rejection_state: Optional[str] = None
     confluence: str = "unknown"
     reasons: list[str] = field(default_factory=list)
+    vp: Optional[object] = None              # vwap_confluence.VwapVpResult (setup block), None = not run
+    vp_levels: Optional[object] = None       # the PrevDayLevels-shaped input it ran on
+    vp_context: Optional[object] = None      # vwap_confluence.Context (closed bars)
+    vp_error: str = ""
 
 
 def _sec(ts: float) -> float:
@@ -130,6 +142,7 @@ def _is_stale(last_closed_open: float, timeframe: str, now: float, market: str) 
 
 def build_context(
     timeframe: str, data, anchor_type: str = ANCHOR_CDCX_AVP, signal=None, now: Optional[float] = None,
+    htf: Optional[str] = None, htf_detail: str = "",
 ) -> HtfAvwapContext:
     """One HTF AVWAP context. `data` is the timeframe's OHLCV (forming bar may be
     included); `signal` the engine TradeSignal for the same timeframe, if any."""
@@ -221,7 +234,35 @@ def build_context(
     bs = bos_state_module.classify_bos_state(ms, h, l, c, v)
     ctx.structure_side = {"up": "bullish", "down": "bearish"}.get(bs.direction, "none")
     ctx.confluence = _confluence(ctx)
+    _attach_setups(ctx, data, timeframe, ts, htf, htf_detail)
     return ctx
+
+
+def _attach_setups(ctx: HtfAvwapContext, data, timeframe: str, closed_ts: list[float],
+                   htf: Optional[str], htf_detail: str) -> None:
+    """VP-01..VP-05 + evidence + DECISION on this AVWAP and the same-anchor AVP levels. The
+    LTF section's "today" (bars after the frozen session) is the last VP_WINDOW_BARS closed bars."""
+    if not ctx.avp_levels or ctx.avwap is None:
+        ctx.vp_error = "no same-anchor AVP levels"
+        return
+    from .volume_profile import vwap_confluence
+    from .volume_profile.prev_day import PrevDayLevels
+
+    poc, vah, val = ctx.avp_levels
+    window_start = closed_ts[max(len(closed_ts) - VP_WINDOW_BARS, 0)]
+    levels = PrevDayLevels(status="OK", timeframe=timeframe, session_start=ctx.anchor_ts,
+                           session_end=window_start, poc=poc, vah=vah, val=val, avwap=ctx.avwap)
+    try:
+        res = vwap_confluence.classify(levels, data, htf=htf, htf_detail=htf_detail)
+    except Exception as exc:   # display only: never break the HTF section
+        ctx.vp_error = f"setup block failed: {exc}"
+        return
+    window = f"in the last {VP_WINDOW_BARS} {timeframe.upper()} bars"
+    for s in res.setups:
+        s.detail = s.detail.replace("prior value area", "AVP value area").replace(
+            "prior VAH/VAL", "AVP VAH/VAL").replace("near prior ", "near AVP ").replace("no bars today yet", f"no bars {window}").replace("today", window)
+    res.family_detail = {k: v.replace("today", window) for k, v in res.family_detail.items()}
+    ctx.vp, ctx.vp_levels = res, levels
 
 
 def _confluence(ctx: HtfAvwapContext) -> str:
@@ -243,17 +284,27 @@ def _confluence(ctx: HtfAvwapContext) -> str:
 
 
 def build_htf_avwap(data_by_tf: dict, signals: Optional[dict] = None, now: Optional[float] = None,
-                    timeframes: Sequence[str] = TIMEFRAMES) -> list[HtfAvwapContext]:
+                    timeframes: Sequence[str] = TIMEFRAMES, symbol: str = "") -> list[HtfAvwapContext]:
+    from .volume_profile import vwap_confluence
+
     signals = signals or {}
+    try:   # cdcx's own 2-of-4 confluence -- the same filter the LTF section and --execute use
+        htf, htf_detail = vwap_confluence.htf_direction(signals) if signals else (None, "")
+    except Exception:
+        htf, htf_detail = None, ""
     out = []
     for tf in timeframes:
         data = data_by_tf.get(tf)
         if data is None:
             continue
+        context = vwap_confluence.context_from_closed(symbol, data, tf, now=now)
         anchors = [ANCHOR_CDCX_AVP] + ([ANCHOR_DECLINE_START] if tf in avp_rejection.TIMEFRAMES else [])
         for anchor_type in anchors:
             try:
-                out.append(build_context(tf, data, anchor_type, signal=signals.get(tf), now=now))
+                ctx = build_context(tf, data, anchor_type, signal=signals.get(tf), now=now,
+                                    htf=htf, htf_detail=htf_detail)
+                ctx.vp_context = context
+                out.append(ctx)
             except Exception as exc:   # fail closed: an explicit unknown, never a side
                 out.append(HtfAvwapContext(timeframe=tf, anchor_type=anchor_type, anchor_source="unknown",
                                            data_status="invalid", reasons=[f"calculation failed: {exc}"]))
@@ -297,6 +348,14 @@ def format_htf_avwap_section(symbol: str, contexts: list[HtfAvwapContext]) -> st
         rej = f" | AVP rejection: {ctx.rejection_state}" if ctx.rejection_state else ""
         lines.append(f"  Strict BOS: {ctx.structure_side}{rej}")
         lines.append(f"  Confluence: {ctx.confluence}")
+        if ctx.vp is not None:
+            from .volume_profile.vwap_confluence import format_setup_lines
+            lines.append("")
+            lines += [f"  {x}" if x else "" for x in format_setup_lines(ctx.vp, ctx.vp_levels, ctx.timeframe,
+                                                                        ctx.vp_context)]
+            lines.append("")
+        else:
+            lines.append(f"  VP-01..VP-05: unknown -- {ctx.vp_error or 'not evaluated'}")
     lines.append("-" * width)
     lines.append("Existing setup grade changed: NO | Existing trade gates changed: NO | Trade action: NONE")
     lines.append(bar)

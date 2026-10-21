@@ -3,6 +3,9 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-21
+- HTF AVWAP CONTEXT gets the LTF setup block (VP-01..VP-05, evidence families, Context, DECISION/STATUS/Next/Invalidates, Execution NOT AUTHORIZED) per 4H/1D/1W context, cdcx-ai + cdcx-equity; nothing removed; 848 passed. Analysis only; RQ6 frozen files untouched. Protected params: unchanged.
+
 ## 2026-10-20
 - AVWAP line + sigma bands in TradingView colours (VWAP #1E88E5, +1..3 #F23645, -1..3 #4CAF50) in HTF AVWAP CONTEXT and PREV-DAY AVWAP + AFVP, cdcx-ai + cdcx-equity (TTY only); 844 passed. Display only; RQ6 frozen files untouched. Protected params: unchanged.
 - PREV-DAY AVWAP + AFVP section: AVWAP line blue (next to yellow POC / red VAH / green VAL; TTY only); 844 passed. Display only; RQ6 frozen files untouched. Protected params: unchanged.

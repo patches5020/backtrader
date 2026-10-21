@@ -368,3 +368,46 @@ def test_equity_htf_avwap_section_uses_the_same_level_colours(monkeypatch):
     avp = next(l for l in section.splitlines() if "Same-anchor AVP" in l)
     assert all(c in avp for c in (YELLOW + "POC", RED + "VAH", GREEN + "VAL"))
     assert any(BLUE + "AVWAP" in l for l in section.splitlines())
+
+
+# --- LTF-style setup block (VP-01..VP-05 + DECISION) inside each HTF context (2026-10-21) ---------
+
+SETUP_BLOCK = ("VP-01 POC reaction", "VP-02 Heavy-volume zone", "VP-03 Trend continuation",
+               "VP-04 Value-area breakout", "VP-05 Band exhaustion", "  vwap ", "  volume ", "  structure ",
+               "  price_action ", "Context (", "DECISION: ", "STATUS: ", "Next:", "Invalidates:",
+               "Execution: NOT AUTHORIZED (analysis only)")
+
+
+def test_htf_context_carries_the_ltf_setup_block():
+    ctx = htf_avwap.build_context("4h", _series("4h", seed=50), now=NOW)
+    assert ctx.data_status == "valid" and ctx.vp is not None
+    assert [s.code for s in ctx.vp.setups] == ["VP-01", "VP-02", "VP-03", "VP-04", "VP-05"]
+    assert (ctx.vp_levels.poc, ctx.vp_levels.vah, ctx.vp_levels.val) == ctx.avp_levels   # same-anchor AVP
+    assert ctx.vp_levels.avwap is ctx.avwap                                             # same AVWAP
+    text = " ".join(s.detail for s in ctx.vp.setups) + " ".join(ctx.vp.family_detail.values())
+    assert "today" not in text and "prior value area" not in text
+
+
+def test_htf_section_prints_setup_block_for_every_valid_context():
+    data = {tf: _series(tf, seed=s, n=300) for tf, s in (("4h", 51), ("1d", 52), ("1w", 53))}
+    ctxs = htf_avwap.build_htf_avwap(data, now=NOW, symbol="XRP/USD")
+    out = htf_avwap.format_htf_avwap_section("XRP/USD", ctxs)
+    valid = [c for c in ctxs if c.vp is not None]
+    assert valid
+    for label in SETUP_BLOCK:
+        assert out.count(label) >= len(valid), label
+    assert out.rstrip().splitlines()[-2].startswith("Existing setup grade changed: NO")
+
+
+def test_htf_setup_block_without_avp_levels_is_explicit_unknown():
+    ctx = htf_avwap.HtfAvwapContext(timeframe="1d", anchor_type=htf_avwap.ANCHOR_CDCX_AVP, anchor_source="x",
+                                    data_status="valid", avwap=None)
+    out = htf_avwap.format_htf_avwap_section("XRP/USD", [ctx])
+    assert "AVWAP: unknown" in out
+
+
+def test_equity_htf_section_has_the_setup_block(monkeypatch):
+    rc, out = _run_equity_report(monkeypatch)
+    section = out[out.index("HTF AVWAP CONTEXT"):]
+    assert rc == 0
+    assert "VP-01 POC reaction" in section and "DECISION: " in section and "Execution: NOT AUTHORIZED" in section
