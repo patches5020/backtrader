@@ -15,6 +15,9 @@ UpperBand/_2/_3 #F23645, LowerBand/_2/_3 #4CAF50, VWAP #1E88E5.
 - RQ6 freeze: untouched (vwap_watch.py / vwap_watch_rq6.py not modified).
 - Evidence: `FORCE_COLOR=1` render -> "ESC[1mESC[38;2;30;136;229mAVWAP 1.30156ESC[0m
   ESC[1mESC[38;2;76;175;80m1.28503ESC[0m / ESC[1mESC[38;2;242;54;69m1.31809ESC[0m".
-  Live cdcx-equity run not possible (Webull keys unset, Robinhood login failed); covered by
-  test_equity_htf_avwap_section_uses_the_same_level_colours.
+  Live cdcx-equity (after Robinhood re-login, session cached to ~/.tokens/robinhood.pickle):
+  `FORCE_COLOR=1 cdcx-equity --source robinhood --symbol SPY --timeframes 1w,1d,4h,1h,15m --structure-report`
+  -> HTF "ESC[38;2;30;136;229mAVWAP 768.498" / "Bands: +/-1: ESC[38;2;76;175;80m762.827 / ESC[38;2;242;54;69m774.169";
+  LTF "ESC[38;2;30;136;229mAVWAP from 10-20 13:30Z (ohlc4): 769.037" / "+/-1: ESC[38;2;76;175;80m767.417 /
+  ESC[38;2;242;54;69m770.656". The HTF section prints only in --timeframes (MTF) mode.
 - Full suite: 844 passed; 700 warnings (pre-existing). Protected params unchanged.
