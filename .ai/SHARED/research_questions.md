@@ -301,13 +301,69 @@ A positive result only allows a separate, user-approved proposal.
 - The video's own stop (just beyond the BOS) is not tested; the protected ATR stop is used.
 - 24-bucket profiles are coarse (RQ10).
 
-## RQ9–RQ10 — staged after RQ8 (PLANNED 2026-10-22 — definitions still to be drafted)
-Same safeguards as RQ7/RQ8: pre-registered and frozen by the user before any test-period result; development period vs.
-prospective confirmatory period; costs; baseline comparison; trade count, expectancy, interval, drawdown and
-parameter sensitivity reported; advisory only; protected parameters untouched; RQ6 frozen artifacts untouched.
-- **RQ9 — VP-01 first-touch filter** (video setup 1): the current VP-01 vs. the first touch only, with the prior close
-  outside the value area and signal-candle volume above the previous candle's. Measured as PASS vs. FAIL within the VP-01
-  baseline, like RQ5.
-- **RQ10 — profile resolution, 24 vs. 400 rows** (a calculation study, not a signal study): first the bucket construction, the price-range
-  coverage and TradingView parity (repeat RQ4 at both settings); then how far POC/VAH/VAL move and the effect on
-  VP-01/VP-04/VP-06 counts. No change to the 24-bucket default unless the user approves after the study.
+## RQ9 — Does the first-touch filter add information to VP-01? (DRAFT 2026-10-22 — proposed values, not frozen, not run)
+Research only. Source: the Trading Notes video, setup 1. VP-01 itself, `classify()`, the families, the DECISION, the
+watcher (RQ6), sizing, gates and protected parameters are unchanged. No result authorizes execution.
+
+**0. Freeze.** Binding only when the user approves the values in section 1 and freezes RQ9. Preconditions:
+`cdcx/volume_profile/vp_first_touch.py` and `cdcx/backtest/vwap_vp_rq9.py` are written, unit-tested on synthetic data only
+(`tests/test_vp_first_touch.py`), and committed. The FROZEN line records the date and time (UTC), the commit, and the SHA-256 of both files and
+of this block (heading through section 6). After the freeze nothing in this block is edited.
+
+**1. Filter (vp_first_touch.checks, exact; PROPOSED values).** Sampled at each VP-01 signal bar t from bars ≤ t only.
+The reaction is the newest bar among today's last 6 with low ≤ POC < close (bullish) or high ≥ POC > close (bearish).
+This is VP-01's own rule; a test checks that the two agree.
+- **F1:** the prior session's last close was outside the value area (< VAL or > VAH).
+- **F2 (first touch):** no bar of today before the reaction bar overlapped the POC zone, POC ± **0.25** × ATR(11) at the
+  reaction bar (the video's "POC is a zone").
+- **F3:** the reaction bar's volume is greater than the previous bar's.
+- **PASS:** F1 and F2 and F3. FAIL otherwise. A signal whose filter reaction disagrees with the VP-01 direction is excluded
+  from the split and counted.
+
+**2. Signals, trade model, costs.** The VP-01 baseline = `vwap_vp_research.find_signals` VP-01 CONFIRMED fires, replayed with
+`vwap_vp_research.replay` (protected 1.5 × ATR stop, TP1–TP4 2.2/2.6/3.2/4.5 R at 25% each, 7.5 + 2 bps per side), unchanged.
+The filtered strategy is the PASS signals re-replayed on their own.
+
+**3. Data and periods.** XRP/USD and XLM/USD, Crypto.com 1H, fetched once and identified by SHA-256.
+- **Confirmatory (prospective):** S = 00:00Z of the first UTC day starting at least 24 h after the FROZEN timestamp; E = S + **182 days**,
+  because the PASS group may be small. Fetched once at or after E + 24 h and analysed once. No interim looks.
+- **Exploratory 2025-06-01 → 2026-05-31:** descriptive only. VP-01 outcomes there were part of RQ3's table; the
+  filter split has not been computed as of this draft.
+
+**4. Statistics.** Pooled across both symbols, `random.Random(20261024)`, one generator, 10,000 resamples, 97.5% intervals:
+- the interval of mean net R (PASS − FAIL), resampled within each group;
+- the filtered strategy's mean net R interval.
+- **Descriptive only:** F1, F2 and F3 each alone (PASS / FAIL means), the baseline figures, the mismatch count, and the
+  filtered strategy's drawdown.
+
+**5. Decision rule (RQ5's rule, confirmatory only).** The filter "adds information" only if PASS and FAIL each have ≥ 30 trades and the
+lower bound of PASS − FAIL is > 0. It is "worth proposing" as an advisory line only if, in addition, the filtered strategy has ≥ 30
+trades and a lower bound > 0. Anything else = no or inconclusive. The F1–F3 components never decide. No re-choice of a value after a result.
+
+**6. Known limits.**
+- F1 requires the prior close to be outside the value area, which is less common. With PASS needing all three checks, the PASS group may be small.
+- The protected stop is not the video's "just above the POC cluster" stop.
+- POC precision is limited by 24 buckets (RQ10).
+
+## RQ10 — Profile resolution: 24 rows vs. 400 rows (PLAN 2026-10-22 — calculation study, not a signal test)
+Same safeguards as RQ7–RQ9. A calculation-validation study: it can recommend a resolution, but the 24-bucket default
+(`volume_profile_fixed.DEFAULT_BUCKETS`) changes only if the user approves afterwards. Any change would also be a
+new ruleset version, because RQ6–RQ9 are frozen on the 24-bucket profile.
+- **What is known (RQ4, 2026-10-16):**
+  - cdcx at 24 rows on 1H matches TradingView's 400-row Fixed Range VP within about one 24-row bucket.
+  - cdcx at **400 rows on 1H bars is unstable** (POC 1.3365 against TradingView's 1.3071): TradingView fills its rows from finer intrabar data, while
+    `build_volume_profile` spreads each bar's volume evenly over every bucket whose centre lies in the bar's high–low range.
+  - So with 24 one-hour bars and 400 rows, each bar is a flat block across many rows, and the POC lands where the most blocks overlap.
+  - Ties go to the lowest price (`max` order), and the value area grows one bucket at a time.
+- **The question is therefore resolution AND source bars**, not just 24 vs. 400.
+- **Plan:**
+  1. **Algorithm audit:** how volume is distributed, the edge rounding, tie-breaking, and the value-area expansion (TradingView compares two
+     rows at a time). Unit tests on synthetic profiles with known answers.
+  2. **Parity grid:** for N = 20 completed XRP/USD and XLM/USD sessions, compute POC/VAH/VAL at {24, 100, 400} rows × source bars
+     {1H, 15m, 5m}. Compare against TradingView's Fixed Range VP (400 rows, 70% VA) read through the TradingView MCP on the
+     same session (chart time = UTC). Report the absolute error, in price and in ATR, for each cell.
+  3. **Stability:** how far each level moves when the session window shifts by one source bar, and when the bucket count changes by ±10%.
+  4. **Downstream effect (descriptive):** how often VP-01/VP-04/VP-06/VP-04P states change on the exploratory period if the
+     best-parity cell replaced the 24-row 1H profile. No trade outcomes; outcomes would need a new pre-registered question.
+- **Acceptance:** a cell is "better" only if its median error against TradingView is below the 24-row 1H error on
+  both symbols and it is at least as stable. The finer source data also costs API calls (5m = 12× the bars), which is reported.

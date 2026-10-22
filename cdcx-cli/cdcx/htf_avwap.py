@@ -265,9 +265,10 @@ def _attach_setups(ctx: HtfAvwapContext, data, timeframe: str, closed_ts: list[f
     res.family_detail = {k: v.replace("today", window) for k, v in res.family_detail.items()}
     ctx.vp, ctx.vp_levels = res, levels
     from .volume_profile.vp_breakout_pullback import breakout_pullback   # RQ8 } display only
+    from .volume_profile.vp_first_touch import first_touch               # RQ9 }
     from .volume_profile.vp_reentry import value_area_reentry            # RQ7 }
     ctx.vp_research = []
-    for fn in (value_area_reentry, breakout_pullback):
+    for fn in (value_area_reentry, breakout_pullback, first_touch):
         try:
             ctx.vp_research.append(fn(levels, data))
         except Exception as exc:

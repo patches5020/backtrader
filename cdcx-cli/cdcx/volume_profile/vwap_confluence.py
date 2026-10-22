@@ -499,9 +499,11 @@ def build_section(symbol: str, data, timeframe: str, results: Optional[dict] = N
         res = classify(lv, data, htf=htf, htf_detail=detail)
         ctx = context_from_closed(symbol, context_data if context_data is not None else data, timeframe, now=now)
         from .vp_breakout_pullback import breakout_pullback   # RQ8 } display only --
-        from .vp_reentry import value_area_reentry            # RQ7 } never in res.setups
+        from .vp_first_touch import first_touch               # RQ9 } never in res.setups
+        from .vp_reentry import value_area_reentry            # RQ7 }
         return format_vwap_vp(symbol, timeframe, lv, res, data.closes[-1], ctx=ctx,
-                              research=[value_area_reentry(lv, data), breakout_pullback(lv, data)])
+                              research=[value_area_reentry(lv, data), breakout_pullback(lv, data),
+                                        first_touch(lv, data)])
     except Exception as exc:   # analysis only: a failure here must never break the report
         return f"PREV-DAY AVWAP + AFVP -- {symbol} {timeframe}: UNKNOWN ({exc})"
 
@@ -536,11 +538,11 @@ def format_setup_lines(res: VwapVpResult, levels: PrevDayLevels, timeframe: str,
                        ctx: Optional[Context] = None, research: Sequence[Setup] = ()) -> list[str]:
     """VP-01..VP-05, the evidence families, Context and DECISION / STATUS / Next / Invalidates /
     Execution -- shared by this section and the HTF AVWAP context (htf_avwap.py). `research` rows
-    (VP-06 vp_reentry.py, VP-04P vp_breakout_pullback.py) print under VP-05 and take no part in the
-    families or the DECISION."""
-    from . import vp_breakout_pullback, vp_reentry
+    (VP-06 vp_reentry.py, VP-04P vp_breakout_pullback.py, VP-01F vp_first_touch.py) print under VP-05
+    and take no part in the families or the DECISION."""
+    from . import vp_breakout_pullback, vp_first_touch, vp_reentry
 
-    fmt = {vp_breakout_pullback.CODE: vp_breakout_pullback.format_line}
+    fmt = {vp_breakout_pullback.CODE: vp_breakout_pullback.format_line, vp_first_touch.CODE: vp_first_touch.format_line}
     lines = []
     for s in res.setups:
         lines.append(f"{s.code} {s.name:<20} {s.state:<11} {s.detail}")
