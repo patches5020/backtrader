@@ -238,16 +238,69 @@ weight, a vote or execution by itself.
 - The protected ATR stop and TP ladder are not the video's trade. That is why the far-edge result is reported but never decides.
 - 24-bucket profiles are coarse; resolution is RQ10.
 
-## RQ8–RQ10 — staged after RQ7 (PLANNED 2026-10-22 — definitions still to be drafted)
-Same safeguards as RQ7: pre-registered and frozen by the user before any test-period result; development period vs.
+## RQ8 — VP-04P breakout → pullback hold → BOS (DRAFT 2026-10-22 — proposed values, not frozen, not run)
+Research only. Source: the Trading Notes video, setup 3. VP-04P is a separate variant beside VP-04; VP-04, `classify()`, the
+evidence families, the DECISION, the watcher (RQ6), sizing, gates and protected parameters are unchanged. No result
+authorizes execution.
+
+**0. Freeze.** Binding only when the user approves the values in section 1 and freezes RQ8. Preconditions:
+`cdcx/volume_profile/vp_breakout_pullback.py` and `cdcx/backtest/vwap_vp_rq8.py` are written, unit-tested on synthetic data only
+(`tests/test_vp_breakout_pullback.py`), and committed. The FROZEN line records the date and time (UTC), the commit, and the SHA-256 of both files and
+of this block (heading through section 6). After the freeze nothing in this block is edited.
+
+**1. Signal (vp_breakout_pullback.scan, exact; PROPOSED values = `Params()` defaults).** 1H previous-day levels
+(`prev_day_levels`, unchanged). ATR = `atr_ema_variant1` ATR(11) at the break bar. The bullish case is shown; bearish mirrors it at VAL.
+- **Break:** the first close above VAH today (previous close ≤ VAH).
+- **Effort / result:** effort = break-bar volume ÷ mean volume of the 20 bars before it; result = break-bar range ÷ ATR.
+  - HEALTHY: effort ≥ **1.5** and result ≥ **1.0**.
+  - ABSORPTION: effort ≥ 1.5 and result < **0.6**.
+  - NO SUPPLY: effort < **0.8**.
+  - NORMAL: anything else.
+  - UNKNOWN: fewer than 20 bars of volume history. Only HEALTHY can trigger.
+- **Pullback:** the first later bar with low ≤ VAH + **0.25** × ATR.
+- **Hold:** FAILED as soon as a close < VAH − **0.25** × ATR, or a low < VAH − **0.5** × ATR.
+- **BOS:** after the pullback bar, a close > (the highest high from the break bar to the bar before the pullback) + **0.25** × ATR
+  (the same 0.25 × ATR break margin cdcx already uses). The signal fires on that close.
+- **Expiry:** no BOS within **12** bars of the break → EXPIRED. After an episode resolves, the next break starts a new one.
+
+**2. Comparator, trade model and costs.** The comparator is VP-04 = `vwap_vp_research.find_signals` VP-04 fires (RQ3, unchanged).
+Both are replayed with `vwap_vp_research.replay`: entry at the next open, stop 1.5 × ATR, TP1–TP4 2.2/2.6/3.2/4.5 R at 25% each,
+a bar touching stop and target counts as the stop, one open trade per setup, costs 7.5 + 2 bps per side. Not tuned.
+
+**3. Data and periods.** XRP/USD and XLM/USD, Crypto.com 1H, each series fetched once and identified by SHA-256.
+- **Confirmatory (prospective):** S = 00:00Z of the first UTC day starting at least 24 h after the FROZEN timestamp; E = S + **182 days**.
+  This is longer than RQ7's 84 days because VP-04P needs a HEALTHY break, a pullback and a BOS, so it will be rare. The data is fetched once at
+  or after E + 24 h and analysed once. No interim looks.
+- **Exploratory (development) 2025-06-01 → 2026-05-31:** descriptive only, never a verdict. VP-04 outcomes there are
+  already known (RQ3); VP-04P outcomes have not been computed as of this draft.
+
+**4. Statistics.** Pooled across both symbols: mean net R per trade, with a 97.5% bootstrap interval (10,000 resamples,
+`random.Random(20261023)`, one generator, in this order: VP-04P, VP-04, then the difference). Also reported: the interval of
+mean(VP-04P) − mean(VP-04), resampled within each group; trade count, win rate, max drawdown in R, and the figures per symbol.
+- **Sensitivity (descriptive only):** VP-04P re-run with one parameter moved at a time:
+  - effort_high 1.2 / 2.0
+  - result_big 0.8 / 1.2
+  - touch_atr 0.10 / 0.50
+  - hold_wick_atr 0.25 / 0.75
+  - bos_atr 0 / 0.5
+  - max_bars 8 / 24
+
+**5. Decision rule (confirmatory only).**
+- **Primary:** "positive expectancy after costs" only if VP-04P has ≥ 30 trades and the lower bound of its interval is > 0.
+- **Secondary:** "the sequence beats VP-04" only if both groups have ≥ 30 trades and the lower bound of the difference is > 0.
+
+Anything else = no or inconclusive. The sensitivity runs never change the verdict and no value is re-chosen after a result is seen.
+A positive result only allows a separate, user-approved proposal.
+
+**6. Known limits.**
+- VP-04P may still be too rare for 30 trades in 26 weeks. The result would then be "insufficient sample", not a failure.
+- The video's own stop (just beyond the BOS) is not tested; the protected ATR stop is used.
+- 24-bucket profiles are coarse (RQ10).
+
+## RQ9–RQ10 — staged after RQ8 (PLANNED 2026-10-22 — definitions still to be drafted)
+Same safeguards as RQ7/RQ8: pre-registered and frozen by the user before any test-period result; development period vs.
 prospective confirmatory period; costs; baseline comparison; trade count, expectancy, interval, drawdown and
 parameter sensitivity reported; advisory only; protected parameters untouched; RQ6 frozen artifacts untouched.
-- **RQ8 — VP-04 breakout → pullback hold → BOS** (video setup 3), as a separate variant beside the current VP-04, which is not
-  replaced. Still to be defined numerically:
-  - "strong break" (candle range vs ATR, volume vs average);
-  - "pullback holds near the level" (maximum depth back inside, in σ or ATR);
-  - the BOS (existing `bos_state`, 0.25 × ATR margin);
-  - the effort/result label (healthy / absorption / no supply) and its thresholds.
 - **RQ9 — VP-01 first-touch filter** (video setup 1): the current VP-01 vs. the first touch only, with the prior close
   outside the value area and signal-candle volume above the previous candle's. Measured as PASS vs. FAIL within the VP-01
   baseline, like RQ5.
