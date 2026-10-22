@@ -63,7 +63,7 @@ Qualification:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Sequence
 
 from .. import bos_state as bos_state_module
 from ..indicators import fair_value_gap, market_structure
@@ -498,13 +498,15 @@ def build_section(symbol: str, data, timeframe: str, results: Optional[dict] = N
         htf, detail = htf_direction(results) if results is not None else (None, "")
         res = classify(lv, data, htf=htf, htf_detail=detail)
         ctx = context_from_closed(symbol, context_data if context_data is not None else data, timeframe, now=now)
-        return format_vwap_vp(symbol, timeframe, lv, res, data.closes[-1], ctx=ctx)
+        from .vp_reentry import value_area_reentry   # RQ7, display only -- never in res.setups
+        return format_vwap_vp(symbol, timeframe, lv, res, data.closes[-1], ctx=ctx,
+                              research=[value_area_reentry(lv, data)])
     except Exception as exc:   # analysis only: a failure here must never break the report
         return f"PREV-DAY AVWAP + AFVP -- {symbol} {timeframe}: UNKNOWN ({exc})"
 
 
 def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: VwapVpResult, price: float,
-                   ctx: Optional[Context] = None) -> str:
+                   ctx: Optional[Context] = None, research: Sequence[Setup] = ()) -> str:
     from datetime import datetime, timezone
 
     bar = "-" * 81
@@ -525,17 +527,21 @@ def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: Vwap
         + (f" ({res.condition_direction})" if res.condition_direction else "") + f" -- {res.condition_detail}",
         "",
     ]
-    lines += format_setup_lines(res, levels, timeframe, ctx) + [bar]
+    lines += format_setup_lines(res, levels, timeframe, ctx, research=research) + [bar]
     return "\n".join(lines)
 
 
 def format_setup_lines(res: VwapVpResult, levels: PrevDayLevels, timeframe: str,
-                       ctx: Optional[Context] = None) -> list[str]:
+                       ctx: Optional[Context] = None, research: Sequence[Setup] = ()) -> list[str]:
     """VP-01..VP-05, the evidence families, Context and DECISION / STATUS / Next / Invalidates /
-    Execution -- shared by this section and the HTF AVWAP context (htf_avwap.py)."""
+    Execution -- shared by this section and the HTF AVWAP context (htf_avwap.py). `research` rows
+    (VP-06, vp_reentry.py) print under VP-05 and take no part in the families or the DECISION."""
+    from .vp_reentry import format_line
+
     lines = []
     for s in res.setups:
         lines.append(f"{s.code} {s.name:<20} {s.state:<11} {s.detail}")
+    lines += [format_line(s) for s in research]
     lines.append("")
     for k in ("vwap", "volume", "structure", "price_action"):
         lines.append(f"  {k:<13} {res.families.get(k) or '--':<9} {res.family_detail.get(k, '')}")

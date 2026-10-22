@@ -97,6 +97,7 @@ class HtfAvwapContext:
     vp_levels: Optional[object] = None       # the PrevDayLevels-shaped input it ran on
     vp_context: Optional[object] = None      # vwap_confluence.Context (closed bars)
     vp_error: str = ""
+    vp_research: list = field(default_factory=list)   # VP-06 (vp_reentry.py) -- research only, never voted
 
 
 def _sec(ts: float) -> float:
@@ -263,6 +264,12 @@ def _attach_setups(ctx: HtfAvwapContext, data, timeframe: str, closed_ts: list[f
             "prior VAH/VAL", "AVP VAH/VAL").replace("near prior ", "near AVP ").replace("no bars today yet", f"no bars {window}").replace("today", window)
     res.family_detail = {k: v.replace("today", window) for k, v in res.family_detail.items()}
     ctx.vp, ctx.vp_levels = res, levels
+    from .volume_profile.vp_reentry import value_area_reentry   # RQ7, display only
+    try:
+        ctx.vp_research = [value_area_reentry(levels, data)]
+    except Exception as exc:
+        ctx.vp_research = []
+        ctx.vp_error = f"VP-06 failed: {exc}"
 
 
 def _confluence(ctx: HtfAvwapContext) -> str:
@@ -352,7 +359,7 @@ def format_htf_avwap_section(symbol: str, contexts: list[HtfAvwapContext]) -> st
             from .volume_profile.vwap_confluence import format_setup_lines
             lines.append("")
             lines += [f"  {x}" if x else "" for x in format_setup_lines(ctx.vp, ctx.vp_levels, ctx.timeframe,
-                                                                        ctx.vp_context)]
+                                                                        ctx.vp_context, research=ctx.vp_research)]
             lines.append("")
         else:
             lines.append(f"  VP-01..VP-05: unknown -- {ctx.vp_error or 'not evaluated'}")

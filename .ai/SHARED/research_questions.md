@@ -183,3 +183,71 @@ keeps its journal key, bar and evidence (audit trail).
 
 **Known limits.** ENTRY_CONFIRMATION_CANDIDATE needs the HTF 2-of-4, which read "none" through most of October
 2026, so it may be too rare to test. 8 weeks x 2 symbols detects only large differences.
+
+## RQ7 — Does VP-06 value-area re-entry have an edge after costs? (DRAFT 2026-10-22 — not frozen, not run)
+Research only. Source: the Trading Notes "3 volume-profile setups" video, setup 2 (assessed 2026-10-22). Nothing here
+changes `classify()`, an evidence family, the DECISION, the watcher (RQ6 stays frozen), sizing, a gate or a protected
+parameter, and no result authorizes execution.
+
+**0. Freeze.** Binding only when the user freezes it. Preconditions:
+`cdcx/volume_profile/vp_reentry.py` and `cdcx/backtest/vwap_vp_rq7.py` are written, unit-tested on synthetic data only
+(`tests/test_vp_reentry.py`), and committed. The FROZEN line records the date and time (UTC), the commit, and the SHA-256 of both files and of this block (heading
+through section 6). After the freeze nothing in this block is edited.
+
+**1. Signal (vp_reentry.evaluate, exact).** 1H, previous-day levels from `prev_day_levels` (70% VA, 24 buckets,
+unchanged). Precondition: the last closed bar before today closed inside [VAL, VAH], inclusive. Excursion: a close
+today > VAH or < VAL (wicks don't count). Signal bar: the first later close back inside [VAL, VAH]. Direction: bullish
+after a close below VAL, bearish after a close above VAH. Repeatable within the session. Walk-forward per
+`vwap_vp_rq7.find_reentry_signals` (bars <= t only at each t).
+- **VP-06** = precondition met (the hypothesis). **VP-06x** = the same re-entry with the prior close outside (comparator).
+
+**2. Trade model and costs (unchanged, not tuned).** `vwap_vp_research.replay`: entry at the next bar's open,
+stop 1.5 × ATR, TP1–TP4 2.2/2.6/3.2/4.5 R at 25% each, a bar touching both stop and target counts as the stop,
+one open trade per setup. Costs 7.5 + 2 bps per side. Trades still open at the end of the data are excluded.
+
+**3. Data and periods.** XRP/USD and XLM/USD, Crypto.com 1H via `CryptoComExchange.fetch_ohlcv`. Each series is fetched
+once, saved, and identified by its SHA-256.
+- **Confirmatory (prospective), the only period that can give a verdict:** S = 00:00Z of the first UTC day starting at
+  least 24 h after the FROZEN timestamp; E = S + 84 days. A signal counts if its bar opened in [S, E). The data is fetched once, at or after
+  E + 24 h, from S − 60 days, then analysed once. No interim looks.
+- **Exploratory (development) 2025-06-01 → 2026-05-31:** descriptive and debugging evidence only, never a verdict. This
+  period's VP-04 outcomes have been seen (RQ3/RQ5); VP-06 outcomes have not been computed anywhere as of this draft.
+
+**4. Statistics.** Pooled across both symbols: mean net R per trade, with a 97.5% bootstrap interval (10,000 resamples,
+`random.Random(20261022)`, one generator for the whole run, in this order: VP-06, VP-06x, then the difference). Also
+reported: the interval of mean(VP-06) − mean(VP-06x), resampled within each group; trade count, win rate, max
+drawdown in R, and the same figures per symbol.
+- **Far-edge (descriptive only, the video's own trade):** entry at the next open, target at the far edge of the value area,
+  stop at the excursion extreme, 24-bar horizon, a bar touching both counts as the stop. The report gives the target rate and the
+  average gross R.
+
+**5. Decision rule (confirmatory only).**
+- **Primary:** VP-06 has "positive expectancy after costs" only if it has ≥ 30 trades and the lower bound of its interval is > 0.
+- **Secondary:** "the precondition adds information" only if both groups have ≥ 30 trades and the lower bound of the
+  difference is > 0.
+
+Anything else = no or inconclusive. After any result is seen, nothing above changes; a change is a new question on new
+data. A positive result only allows a separate, user-approved proposal (e.g. an advisory line). It never adds
+weight, a vote or execution by itself.
+
+**6. Known limits.**
+- 12 weeks × 2 symbols probably gives ~100 trades or fewer, which can detect only a large effect.
+- The protected ATR stop and TP ladder are not the video's trade. That is why the far-edge result is reported but never decides.
+- 24-bucket profiles are coarse; resolution is RQ10.
+
+## RQ8–RQ10 — staged after RQ7 (PLANNED 2026-10-22 — definitions still to be drafted)
+Same safeguards as RQ7: pre-registered and frozen by the user before any test-period result; development period vs.
+prospective confirmatory period; costs; baseline comparison; trade count, expectancy, interval, drawdown and
+parameter sensitivity reported; advisory only; protected parameters untouched; RQ6 frozen artifacts untouched.
+- **RQ8 — VP-04 breakout → pullback hold → BOS** (video setup 3), as a separate variant beside the current VP-04, which is not
+  replaced. Still to be defined numerically:
+  - "strong break" (candle range vs ATR, volume vs average);
+  - "pullback holds near the level" (maximum depth back inside, in σ or ATR);
+  - the BOS (existing `bos_state`, 0.25 × ATR margin);
+  - the effort/result label (healthy / absorption / no supply) and its thresholds.
+- **RQ9 — VP-01 first-touch filter** (video setup 1): the current VP-01 vs. the first touch only, with the prior close
+  outside the value area and signal-candle volume above the previous candle's. Measured as PASS vs. FAIL within the VP-01
+  baseline, like RQ5.
+- **RQ10 — profile resolution, 24 vs. 400 rows** (a calculation study, not a signal study): first the bucket construction, the price-range
+  coverage and TradingView parity (repeat RQ4 at both settings); then how far POC/VAH/VAL move and the effect on
+  VP-01/VP-04/VP-06 counts. No change to the 24-bucket default unless the user approves after the study.

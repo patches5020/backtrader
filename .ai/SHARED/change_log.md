@@ -3,6 +3,9 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-22
+- VP-06 value-area re-entry (research-only display row, LTF + HTF, cdcx-ai + cdcx-equity; not in classify()/families/DECISION/watcher) + RQ7 pre-registration and driver vwap_vp_rq7.py; RQ8-RQ10 planned; 866 passed. RQ6 untouched. Protected params: unchanged.
+
 ## 2026-10-21
 - HTF AVWAP CONTEXT gets the LTF setup block (VP-01..VP-05, evidence families, Context, DECISION/STATUS/Next/Invalidates, Execution NOT AUTHORIZED) per 4H/1D/1W context, cdcx-ai + cdcx-equity; nothing removed; 848 passed. Analysis only; RQ6 frozen files untouched. Protected params: unchanged.
 
