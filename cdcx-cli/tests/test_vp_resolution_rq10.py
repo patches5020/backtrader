@@ -71,3 +71,13 @@ def test_tv_parity_measures_error_in_atr_per_cell():
     p = rq10.tv_parity(rows, tv)["5m@400"]
     assert p["n"] == 2 and p["within_0.10"] == 0.5
     assert p["median_worst"] == pytest.approx(0.25) and p["mean_worst"] == pytest.approx(0.25)
+
+
+def test_step4_downstream_runs_and_reports_shares():
+    h1 = _series(3600, 6, seed=4)
+    m5 = _series(300, 6, seed=5)
+    out = rq10.downstream(h1, m5, rows_list=(100,), last_days=2)
+    o = out[100]
+    assert o["bars"] > 0
+    assert {"VP-01", "VP-04", "VP-06", "VP-04P", "VP-01F", "DECISION"} <= set(o["changed_share"])
+    assert all(0 <= v <= 1 for v in o["changed_share"].values())

@@ -4,6 +4,7 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-22
+- RQ10 step 4: 5m-based levels change VP-01/04/06/04P states on 11-25% of 1H bars and the DECISION on 2-11%; a vwap-vp-2 would be a different strategy needing its own outcome RQ; RQ10 complete; 902 passed. Protected params: unchanged.
 - RQ10 step 2: TradingView parity for 20 sessions x 2 symbols (temporary FRVP drawings, user drawings verified unchanged); 1H@24 is 0.30/0.95 ATR from TV (XRP/XLM), 5m@100-400 roughly halves it; value-area method not the cause; no default changed; 901 passed. Protected params: unchanged.
 - RQ10 steps 1 + 3: profile resolution x source-bar calculation study (vp_resolution_rq10.py); 1H@24 is coarse (0.2-0.3 ATR sensitivity), 5m@100-400 the leading candidate pending TradingView parity; no default changed; 900 passed. Protected params: unchanged.
 - RQ9 FROZEN 2026-10-22T14:43:42Z (commit 762fc0e; S 2026-10-24, E 2027-04-24, analyse once on or after 2027-04-25). Protected params: unchanged.

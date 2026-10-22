@@ -414,3 +414,14 @@ new ruleset version, because RQ6–RQ9 are frozen on the 24-bucket profile.
   - **Recommendation for the user to decide:**
     - 5m @ 100–400 as a NEW ruleset version (vwap-vp-2), never edited into the frozen vwap-vp-1 that RQ6–RQ9 test.
     - Optionally, a "two-peak day" flag (POC unstable) as context.
+- **RESULT step 4, downstream state changes (run 2026-10-22, the same saved data, 481 closed 1H bars per symbol).** For each bar,
+  the setup states were computed with the current 1H/24 levels and with the frozen session's POC/VAH/VAL from 5m bars. This is
+  descriptive only; there are no trade outcomes. Share of bars whose state:direction differs:
+  - **XRP, 5m@400:** VP-01 12%, VP-04 14%, VP-06 11%, VP-04P 17%, VP-01F 9%, DECISION 2%.
+  - **XLM, 5m@400:** VP-01 20%, VP-04 20%, VP-06 18%, VP-04P 15%, VP-01F 16%, DECISION 10%.
+  - **5m@100:** similar.
+  - **VP-03 / VP-05:** 0%, because they are VWAP-based.
+  - **Trigger counts:** totals stay similar (e.g. XRP VP-04 ACCEPTED bars 111 → 130, XLM VP-01 CONFIRMED 108 → 91), but they land on different bars.
+  - **Conclusion:** the level source materially changes WHICH bars signal. A vwap-vp-2 on 5m levels is therefore a different
+    strategy, not a cosmetic fix. RQ3's outcomes don't carry over, so preferring it for anything beyond display would need its own
+    pre-registered outcome question on new data. RQ10 is complete. A display-only vwap-vp-2 next to vwap-vp-1 is the user's decision.

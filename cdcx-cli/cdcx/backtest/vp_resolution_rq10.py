@@ -194,6 +194,84 @@ def format_report(per: dict, hashes: dict) -> str:
     return "\n".join(lines)
 
 
+# --- step 4: downstream state changes (descriptive; no trade outcomes) --------------------------------------
+STEP4_ROWS = (100, 400)
+
+
+def _states(lv, sub) -> dict[str, str]:
+    """state:direction of VP-01..05 (classify) and the research rows VP-06 / VP-04P / VP-01F on one bar."""
+    from ..volume_profile import vp_breakout_pullback, vp_first_touch, vp_reentry
+    from ..volume_profile.vwap_confluence import classify
+
+    res = classify(lv, sub)
+    out = {s.code: f"{s.state}:{s.direction}" for s in res.setups}
+    out["DECISION"] = f"{res.qualification}:{res.qualification_direction}"
+    for fn in (vp_reentry.value_area_reentry, vp_breakout_pullback.breakout_pullback, vp_first_touch.first_touch):
+        r = fn(lv, sub)
+        out[r.code] = f"{r.state}:{r.direction}"
+    return out
+
+
+def downstream(h1: OHLCV, m5: OHLCV, rows_list=STEP4_ROWS, last_days: int = SESSIONS) -> dict:
+    """For each closed 1h bar of the last `last_days` days: setup states with the current 1h/24 levels vs the
+    same bar with POC/VAH/VAL replaced by 5m @ rows levels of the same frozen session. Returns, per rows value
+    and setup, the share of bars whose state:direction differs, plus counts of trigger-state bars each way."""
+    from dataclasses import replace
+
+    from ..volume_profile.prev_day import prev_day_levels
+    from . import vwap_vp_research as vr
+
+    ts = _sec(h1)
+    first = ts[-1] - last_days * DAY
+    lo = 0
+    trig = {"VP-01": "CONFIRMED", "VP-04": "ACCEPTED", "VP-06": "PENDING", "VP-04P": "PENDING", "VP-01F": "PASS"}
+    out = {r: {"bars": 0, "changed": {}, "trig_base": {}, "trig_alt": {}} for r in rows_list}
+    cache: dict = {}
+    for t in range(len(ts)):
+        if ts[t] < first:
+            continue
+        now = ts[t] + 3600
+        floor = (now // DAY) * DAY - DAY - vr.STRUCTURE_BARS * 3600
+        while lo < t and ts[lo] < floor:
+            lo += 1
+        sub = vr._slice(h1, lo, t + 1)
+        lv = prev_day_levels(sub, "1h", now=now)
+        if lv.status != "OK":
+            continue
+        base = _states(lv, sub)
+        for rows in rows_list:
+            key = (lv.session_start, rows)
+            if key not in cache:
+                bars = session_bars(m5, "5m", lv.session_start, lv.session_end)
+                cache[key] = levels(*bars, rows) if bars else None
+            alt_lv = cache[key]
+            if alt_lv is None:
+                continue
+            alt = _states(replace(lv, poc=alt_lv["poc"], vah=alt_lv["vah"], val=alt_lv["val"]), sub)
+            o = out[rows]
+            o["bars"] += 1
+            for k in base:
+                o["changed"][k] = o["changed"].get(k, 0) + (base[k] != alt.get(k))
+            for k, st in trig.items():
+                o["trig_base"][k] = o["trig_base"].get(k, 0) + base.get(k, "").startswith(st + ":")
+                o["trig_alt"][k] = o["trig_alt"].get(k, 0) + alt.get(k, "").startswith(st + ":")
+    for o in out.values():
+        o["changed_share"] = {k: v / o["bars"] for k, v in o["changed"].items()} if o["bars"] else {}
+    return out
+
+
+def format_downstream(per: dict) -> str:
+    lines = ["Step 4 -- share of 1h bars whose setup state changes if the frozen session's POC/VAH/VAL come from 5m bars "
+             "(descriptive; no outcomes)"]
+    for sym, d in per.items():
+        for rows, o in d.items():
+            ch = "  ".join(f"{k} {v:.0%}" for k, v in o["changed_share"].items())
+            tr = "  ".join(f"{k} {o['trig_base'][k]}->{o['trig_alt'][k]}" for k in o["trig_base"])
+            lines.append(f"{sym} 5m@{rows} ({o['bars']} bars): {ch}")
+            lines.append(f"    trigger-state bars (1h@24 -> 5m@{rows}): {tr}")
+    return "\n".join(lines)
+
+
 def _file(dirpath: str, symbol: str, tf: str) -> str:
     return os.path.join(dirpath, f"rq10_{symbol.split('/')[0].lower()}_{tf}.json")
 
@@ -205,6 +283,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     g.add_argument("--data", metavar="DIR")
     ap.add_argument("--sessions", type=int, default=SESSIONS)
     ap.add_argument("--tv", metavar="DIR", help="also compare with rq10_tv_<sym>.json TradingView readings (step 2)")
+    ap.add_argument("--step4", action="store_true", help="also count downstream setup-state changes (step 4)")
     ap.add_argument("--out")
     a = ap.parse_args(argv)
     if a.fetch:
@@ -237,9 +316,18 @@ def main(argv: Optional[list[str]] = None) -> int:
                     parity[sym] = tv_parity(raw[sym], json.load(fh)["levels"])
         print()
         print(format_parity(parity))
+    step4 = {}
+    if a.step4:
+        for sym in SYMBOLS:
+            h1, _ = _load(_file(a.data, sym, "1h"))
+            m5, _ = _load(_file(a.data, sym, "5m"))
+            step4[sym] = downstream(h1, m5, last_days=a.sessions)
+        print()
+        print(format_downstream(step4))
     if a.out:
         with open(a.out, "w") as fh:
-            json.dump({"hashes": hashes, "summary": per, "parity": parity, "rows": raw}, fh, indent=1, default=str)
+            json.dump({"hashes": hashes, "summary": per, "parity": parity, "step4": step4, "rows": raw}, fh, indent=1,
+                      default=str)
     return 0
 
 

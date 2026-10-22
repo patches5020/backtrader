@@ -26,3 +26,7 @@ Approved by the user ("Yes to all"). A calculation study, not a signal test. DEF
   - **Within 0.10 ATR:** about half the sessions at 5m; the rest are two-peak days where the POC node flips.
   - **Value-area method:** the TV-style method doesn't help.
   - **Recommendation for the user to decide:** 5m source bars as a new ruleset version (vwap-vp-2), never edited into the frozen vwap-vp-1.
+- **Step 4, downstream state changes** (same day). `vp_resolution_rq10.py` gains `downstream` / `--step4`, plus 1 test; 902 passed.
+  - Using 5m levels changes VP-01/VP-04/VP-06/VP-04P states on 11–25% of 1H bars and the DECISION on 2–3% (XRP) / 10–11% (XLM).
+  - VP-03/VP-05 are unaffected.
+  - A vwap-vp-2 would be a different strategy and would need its own outcome RQ. RQ10 is complete.
