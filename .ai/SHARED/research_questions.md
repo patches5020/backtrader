@@ -301,7 +301,7 @@ A positive result only allows a separate, user-approved proposal.
 - The video's own stop (just beyond the BOS) is not tested; the protected ATR stop is used.
 - 24-bucket profiles are coarse (RQ10).
 
-## RQ9 — Does the first-touch filter add information to VP-01? (DRAFT 2026-10-22 — proposed values, not frozen, not run)
+## RQ9 — Does the first-touch filter add information to VP-01? (FROZEN 2026-10-22T14:43:42Z, not run)
 Research only. Source: the Trading Notes video, setup 1. VP-01 itself, `classify()`, the families, the DECISION, the
 watcher (RQ6), sizing, gates and protected parameters are unchanged. No result authorizes execution.
 
@@ -309,6 +309,10 @@ watcher (RQ6), sizing, gates and protected parameters are unchanged. No result a
 `cdcx/volume_profile/vp_first_touch.py` and `cdcx/backtest/vwap_vp_rq9.py` are written, unit-tested on synthetic data only
 (`tests/test_vp_first_touch.py`), and committed. The FROZEN line records the date and time (UTC), the commit, and the SHA-256 of both files and
 of this block (heading through section 6). After the freeze nothing in this block is edited.
+- `FROZEN: 2026-10-22T14:43:42Z commit 762fc0e vp_first_touch.py=d573024f24a8504a98d3d5f3ebc626ce459a875cd62c7d0ba454458ebe49b0bd vwap_vp_rq9.py=2dbced8da8e17ed9e3e6406b50e447a4c6c55cbed035ac4972f8da846134eb8b rq9_text=6b9891d2538ca5d5c4396e0751c393714f7f282ddf119dee0c2e315e7f697e47`
+  (rq9_text = this block as committed in 762fc0e, from its heading up to the RQ10 heading, before this line and the
+  heading were filled in. Values approved by the user as proposed. S = 2026-10-24 00:00Z, E = 2027-04-24 00:00Z; fetch/analyse once,
+  at or after 2027-04-25 00:00Z.)
 
 **1. Filter (vp_first_touch.checks, exact; PROPOSED values).** Sampled at each VP-01 signal bar t from bars ≤ t only.
 The reaction is the newest bar among today's last 6 with low ≤ POC < close (bullish) or high ≥ POC > close (bearish).

@@ -18,3 +18,6 @@ Video setup 1 (Trading Notes "3 volume-profile setups"). The user approved the p
 - `research_questions.md`: RQ9 block, and the RQ10 plan (a resolution AND source-bar calculation study; RQ4 showed 400 rows on 1H is
   unstable). The RQ7/RQ8 text hashes were verified unchanged.
 - Protected params unchanged. RQ6/RQ7/RQ8 frozen files untouched.
+- **RQ9 FROZEN 2026-10-22T14:43:42Z** against commit 762fc0e, with `test_rq9_frozen_files_unchanged` guarding both files. S = 2026-10-24, E = 2027-04-24;
+  the analysis runs once, on or after 2027-04-25:
+  `python -m cdcx.backtest.vwap_vp_rq9 --fetch DIR --start 2026-10-24 --end 2027-04-24`, then the same with `--data DIR`.

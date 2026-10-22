@@ -86,3 +86,13 @@ def test_trade_and_research_paths_do_not_score_vp01f(path):
 def test_classify_does_not_call_vp01f():
     src = (ROOT / "cdcx/volume_profile/vwap_confluence.py").read_text(encoding="utf-8")
     assert "first_touch" not in src.split("def classify(")[1].split("\ndef ")[0]
+
+
+def test_rq9_frozen_files_unchanged():
+    import hashlib
+    import re
+    frozen = re.search(r"vp_first_touch\.py=([0-9a-f]{64}) vwap_vp_rq9\.py=([0-9a-f]{64})",
+                       (ROOT.parent / ".ai/SHARED/research_questions.md").read_text(encoding="utf-8"))
+    for rel, want in (("cdcx/volume_profile/vp_first_touch.py", frozen.group(1)),
+                      ("cdcx/backtest/vwap_vp_rq9.py", frozen.group(2))):
+        assert hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() == want, rel
