@@ -563,7 +563,11 @@ def _print_vwap_vp_one(symbol: str, timeframe: str, results: dict | None) -> Non
             fine = exchange.fetch_ohlcv(symbol, timeframe="5m", limit=2 * 288 + 20)
         except Exception:
             fine = None                             # the line then reads UNKNOWN; the section is unaffected
-    print(build_section(symbol, data, timeframe, results, context_data=history, fine_data=fine))
+    try:   # 1m bars feed only the vwap-vp-3 display line (previous session + today)
+        minute = history if timeframe == "1m" else exchange.fetch_ohlcv(symbol, timeframe="1m", limit=2 * 1440 + 20)
+    except Exception:
+        minute = None
+    print(build_section(symbol, data, timeframe, results, context_data=history, fine_data=fine, minute_data=minute))
 
 
 def _handle_backtrader(args: argparse.Namespace) -> int:

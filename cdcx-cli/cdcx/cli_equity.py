@@ -492,7 +492,11 @@ def _print_vwap_vp(exchange, symbol: str, timeframes: str, results: dict | None)
             fine = data if tf == "5m" else exchange.fetch_ohlcv(symbol, timeframe="5m", limit=1000)
         except Exception:
             fine = None
-        print(build_section(symbol, data, tf, results, fine_data=fine))
+        try:   # 1m bars feed only the vwap-vp-3 display line (Webull; Robinhood has no 1m -> UNKNOWN)
+            minute = data if tf == "1m" else exchange.fetch_ohlcv(symbol, timeframe="1m", limit=1200)
+        except Exception:
+            minute = None
+        print(build_section(symbol, data, tf, results, fine_data=fine, minute_data=minute))
 
 
 def main(argv: list[str] | None = None) -> int:

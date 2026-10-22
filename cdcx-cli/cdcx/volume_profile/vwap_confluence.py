@@ -490,10 +490,11 @@ def split_timeframes(value: str) -> tuple[list[str], list[str]]:
 
 
 def build_section(symbol: str, data, timeframe: str, results: Optional[dict] = None,
-                  now: Optional[float] = None, context_data=None, fine_data=None) -> str:
+                  now: Optional[float] = None, context_data=None, fine_data=None, minute_data=None) -> str:
     """The whole printable section from one intraday OHLCV series; never raises (errors -> UNKNOWN).
     `context_data` (optional, longer history of the same timeframe) feeds only the Context line;
-    `fine_data` (optional 5m bars) feeds only the vwap-vp-2 display line (prev_day_v2.py)."""
+    `fine_data` (optional 5m bars) feeds only the vwap-vp-2 display line (prev_day_v2.py);
+    `minute_data` (optional 1m bars) feeds only the vwap-vp-3 display line (prev_day_v3.py)."""
     try:
         lv = prev_day_levels(data, timeframe, now=now)
         htf, detail = htf_direction(results) if results is not None else (None, "")
@@ -506,15 +507,19 @@ def build_section(symbol: str, data, timeframe: str, results: Optional[dict] = N
         if fine_data is not None and lv.status == "OK":
             from .prev_day_v2 import levels_v2           # display only -- never read by classify()
             v2 = levels_v2(fine_data, lv.session_start, lv.session_end)
+        v3 = None
+        if minute_data is not None and lv.status == "OK":
+            from .prev_day_v3 import levels_v3           # display only -- never read by classify()
+            v3 = levels_v3(minute_data, lv.session_start, lv.session_end)
         return format_vwap_vp(symbol, timeframe, lv, res, data.closes[-1], ctx=ctx,
                               research=[value_area_reentry(lv, data), breakout_pullback(lv, data),
-                                        first_touch(lv, data)], v2=v2)
+                                        first_touch(lv, data)], v2=v2, v3=v3)
     except Exception as exc:   # analysis only: a failure here must never break the report
         return f"PREV-DAY AVWAP + AFVP -- {symbol} {timeframe}: UNKNOWN ({exc})"
 
 
 def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: VwapVpResult, price: float,
-                   ctx: Optional[Context] = None, research: Sequence[Setup] = (), v2=None) -> str:
+                   ctx: Optional[Context] = None, research: Sequence[Setup] = (), v2=None, v3=None) -> str:
     from datetime import datetime, timezone
 
     bar = "-" * 81
@@ -524,6 +529,7 @@ def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: Vwap
                   f"Execution: {res.execution}", bar]
         return "\n".join(lines)
     from .prev_day_v2 import format_line as v2_line
+    from .prev_day_v3 import format_line as v3_line
 
     f = lambda t: datetime.fromtimestamp(t, timezone.utc).strftime("%m-%d %H:%MZ")
     a = levels.avwap
@@ -532,6 +538,7 @@ def format_vwap_vp(symbol: str, timeframe: str, levels: PrevDayLevels, res: Vwap
         f"  {colorize_poc(f'POC {levels.poc:.6g}')} | {colorize_vah(f'VAH {levels.vah:.6g}')} | "
         f"{colorize_val(f'VAL {levels.val:.6g}')} | HVN {levels.hvn:.6g} | LVN {levels.lvn:.6g}",
         *([v2_line(v2, levels)] if v2 is not None else []),
+        *([v3_line(v3, levels)] if v3 is not None else []),
         f"{colorize_vwap(f'AVWAP from {f(a.anchor_ts)} ({a.source}): {a.vwap:.6g}')}  sigma {a.sigma:.6g}  (last closed bar {f(a.last_bar_ts)})",
         "  " + " | ".join(f"+/-{k}: {colorize_avwap_lower(f'{lo:.6g}')} / {colorize_avwap_upper(f'{hi:.6g}')}" for k, (lo, hi) in a.bands.items()),
         f"Price {price:.6g} = {res.z:+.2f} sigma | Condition: {res.condition}"
