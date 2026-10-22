@@ -107,3 +107,13 @@ def test_rq8_signals_are_walk_forward_no_lookahead():
 def test_rq8_verdict():
     assert rq8.verdict(10, (0.1, 0.2), 50, (0.1, 0.2))["primary"].startswith("insufficient")
     assert rq8.verdict(40, (0.01, 0.2), 50, (-0.1, 0.2))["vs_vp04"].startswith("no evidence")
+
+
+def test_rq8_frozen_files_unchanged():
+    import hashlib
+    import re
+    frozen = re.search(r"vp_breakout_pullback\.py=([0-9a-f]{64}) vwap_vp_rq8\.py=([0-9a-f]{64})",
+                       (ROOT.parent / ".ai/SHARED/research_questions.md").read_text(encoding="utf-8"))
+    for rel, want in (("cdcx/volume_profile/vp_breakout_pullback.py", frozen.group(1)),
+                      ("cdcx/backtest/vwap_vp_rq8.py", frozen.group(2))):
+        assert hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() == want, rel

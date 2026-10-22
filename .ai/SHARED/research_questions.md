@@ -238,7 +238,7 @@ weight, a vote or execution by itself.
 - The protected ATR stop and TP ladder are not the video's trade. That is why the far-edge result is reported but never decides.
 - 24-bucket profiles are coarse; resolution is RQ10.
 
-## RQ8 — VP-04P breakout → pullback hold → BOS (DRAFT 2026-10-22 — proposed values, not frozen, not run)
+## RQ8 — VP-04P breakout → pullback hold → BOS (FROZEN 2026-10-22T14:27:54Z, not run)
 Research only. Source: the Trading Notes video, setup 3. VP-04P is a separate variant beside VP-04; VP-04, `classify()`, the
 evidence families, the DECISION, the watcher (RQ6), sizing, gates and protected parameters are unchanged. No result
 authorizes execution.
@@ -247,6 +247,10 @@ authorizes execution.
 `cdcx/volume_profile/vp_breakout_pullback.py` and `cdcx/backtest/vwap_vp_rq8.py` are written, unit-tested on synthetic data only
 (`tests/test_vp_breakout_pullback.py`), and committed. The FROZEN line records the date and time (UTC), the commit, and the SHA-256 of both files and
 of this block (heading through section 6). After the freeze nothing in this block is edited.
+- `FROZEN: 2026-10-22T14:27:54Z commit 5fcbcc4 vp_breakout_pullback.py=e68de1bfe58b0eda7654864cbcbaec31397d57d64776f19d31a6c70432bd2bdb vwap_vp_rq8.py=34645d1b7457c39f27749fc5382c39fd0608559be5f1c1c0df18a5e393fbae44 rq8_text=4a2f0eba0366815426ed8e826cd2a89bf6e4ef181ee0e0cd611e6c4c82a218cb`
+  (rq8_text = this block as committed in 5fcbcc4, from its heading up to the RQ9 heading, before this line and the
+  heading were filled in. Values approved by the user as proposed. S = 2026-10-24 00:00Z, E = 2027-04-24 00:00Z; fetch/analyse once,
+  at or after 2027-04-25 00:00Z.)
 
 **1. Signal (vp_breakout_pullback.scan, exact; PROPOSED values = `Params()` defaults).** 1H previous-day levels
 (`prev_day_levels`, unchanged). ATR = `atr_ema_variant1` ATR(11) at the break bar. The bullish case is shown; bearish mirrors it at VAL.

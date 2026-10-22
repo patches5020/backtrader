@@ -19,3 +19,7 @@ Video setup 3 (Trading Notes "3 volume-profile setups"). The user approved the p
 - `research_questions.md`: RQ8 block inserted after RQ7; the RQ7 text hash was verified unchanged. RQ9–RQ10 are still planned.
 - Live XRP: 4H "VP-04P Breakout pullback FAILED VAH 1.35926 break: HEALTHY (effort 2.5x vol, result 1.6x ATR)".
 - Protected params unchanged. RQ6/RQ7 frozen files untouched.
+- **RQ8 FROZEN 2026-10-22T14:27:54Z** against commit 5fcbcc4. The SHA-256 of vp_breakout_pullback.py, vwap_vp_rq8.py and the RQ8 text is recorded, and
+  `test_rq8_frozen_files_unchanged` guards both files. S = 2026-10-24 00:00Z, E = 2027-04-24 00:00Z. The single fetch and analysis
+  runs on or after 2027-04-25:
+  `python -m cdcx.backtest.vwap_vp_rq8 --fetch DIR --start 2026-10-24 --end 2027-04-24`, then the same with `--data DIR`.
