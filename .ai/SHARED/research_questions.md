@@ -486,7 +486,7 @@ The VP-01 figures never decide. Anything else = no or inconclusive. A positive r
 - Two-peak days were tested as an explanation and rejected: the peak ratio doesn't predict mismatches.
 - 5m history is 12× the bars to fetch.
 
-## RQ12 — Do VP-04 signals do better on vwap-vp-3 (TradingView-matched) levels? (DRAFT 2026-10-22, not frozen)
+## RQ12 — Do VP-04 signals do better on vwap-vp-3 (TradingView-matched) levels? (FROZEN 2026-10-22T18:07:52Z, not run)
 Research only. Follows the RQ10 1m follow-up: vwap-vp-3 (`prev_day_v3.py`, the same frozen session from **1m** bars at 400 rows,
 computed by the frozen `prev_day_v2.levels_v2` with `fine_tf="1m"`) matches TradingView's Fixed Range VP to a median
 0.018 (XRP) / 0.044 (XLM) ATR. vwap-vp-1, `classify()`, the families, the DECISION, the watcher (RQ6), RQ7–RQ11, sizing, gates and
@@ -497,6 +497,10 @@ and `cdcx/backtest/vwap_vp_rq12.py` are written, unit-tested on synthetic data o
 `tests/test_vwap_vp_rq12.py`), and committed. The FROZEN line records the date and time (UTC), the commit, and the SHA-256 of both
 files and of this block (heading through section 6). After the freeze nothing in this block is edited, and `prev_day_v3.py` (which
 also drives the display line) is frozen with it.
+- `FROZEN: 2026-10-22T18:07:52Z commit 4e242b0 prev_day_v3.py=55f72ec9200c07a61af16565ac50c1c71e1ff519255f44bae4983fdf92da9acb vwap_vp_rq12.py=b09cf23cc89f0d8819351984b467da8c47c4c01667ec76407aa4d93015dce676 rq12_text=e20b54b779c04c75920a54d5746a2cf9625fc478f8e7805d7fa8831e3a404a73`
+  (rq12_text = this block as committed in 4e242b0, from its heading to the end of the file, before this line and the
+  heading were filled in. Values approved by the user as proposed. S = 2026-10-24 00:00Z, E = 2027-04-24 00:00Z; fetch/analyse once,
+  at or after 2027-04-25 00:00Z.)
 
 **1. Signals (PROPOSED).** 1H walk-forward exactly as `vwap_vp_research.find_signals`. At each bar t, `prev_day_levels` (vwap-vp-1)
 gives the session and its AVWAP; POC/VAH/VAL are replaced by `levels_v3` from that session's 1m bars at **400** rows (HVN/LVN

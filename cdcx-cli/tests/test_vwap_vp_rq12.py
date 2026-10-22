@@ -64,3 +64,15 @@ def test_summary_and_report_run_end_to_end():
     s = rq12.summarize([rq12.run_symbol("XRP/USD", h1, m1, 0, 2**40)])
     assert set(s["pooled"]) == {"VP-04v3", "VP-04v1", "VP-01v3", "VP-01v1"}
     assert "RQ12" in rq12.format_report(s, {"XRP/USD 1h": "0" * 64}, "a", "b")
+
+
+def test_rq12_frozen_files_unchanged():
+    import hashlib
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parents[1]
+    frozen = re.search(r"prev_day_v3\.py=([0-9a-f]{64}) vwap_vp_rq12\.py=([0-9a-f]{64})",
+                       (root.parent / ".ai/SHARED/research_questions.md").read_text(encoding="utf-8"))
+    for rel, want in (("cdcx/volume_profile/prev_day_v3.py", frozen.group(1)),
+                      ("cdcx/backtest/vwap_vp_rq12.py", frozen.group(2))):
+        assert hashlib.sha256((root / rel).read_bytes()).hexdigest() == want, rel

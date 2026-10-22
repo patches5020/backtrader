@@ -4,6 +4,7 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-22
+- RQ12 FROZEN 2026-10-22T18:07:52Z (commit 4e242b0; S 2026-10-24, E 2027-04-24, analyse once on or after 2027-04-25); prev_day_v3.py now frozen; reminder task 2027-04-25 09:15; 924 passed. Protected params: unchanged.
 - RQ12 DRAFT (VP-04 on vwap-vp-3 1m levels vs vwap-vp-1; not frozen) + driver vwap_vp_rq12.py; 923 passed. RQ6-RQ11 untouched. Protected params: unchanged.
 - vwap-vp-3 display line (1m @ 400 rows POC/VAH/VAL via the frozen levels_v2, cdcx-ai + cdcx-equity/Webull, display only); live XRP 10-21 matches TradingView FRVP to ~0.0001; no outcome RQ yet; 918 passed. RQ6-RQ11 untouched. Protected params: unchanged.
 - RQ10 follow-up: TradingView 15m bars identical to the Crypto.com API (data not the cause); 1m@400 profiles match TradingView to 0.018/0.044 ATR (XRP/XLM) -- TradingView uses 1m intrabar data; a 1m vwap-vp-3 is the user's decision. Protected params: unchanged.
