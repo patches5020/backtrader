@@ -21,3 +21,7 @@ Follows RQ10. The user said "Yes to all" (option 1 display, option 2 outcome tes
 - RQ11 DRAFT in `research_questions.md` (not frozen; it awaits the user's approval of section 1).
 - Tests: `test_prev_day_v2.py` (5), `test_vwap_vp_rq11.py` (4), plus the `test_vwap_vp_context.py` stub updated for `fine_data`. Full suite 911 passed.
 - Protected params unchanged. RQ6–RQ9 frozen files and texts untouched.
+- **RQ11 FROZEN 2026-10-22T15:54:00Z** against commit 9ca50d6, with values approved as proposed and `test_rq11_frozen_files_unchanged` guarding both files.
+  S = 2026-10-24, E = 2027-04-24; the analysis runs once, on or after 2027-04-25:
+  `python -m cdcx.backtest.vwap_vp_rq11 --fetch DIR --start 2026-10-24 --end 2027-04-24`, then the same with `--data DIR`.
+  Note: `prev_day_v2.py` (which also drives the display line) is now frozen too.

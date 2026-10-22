@@ -57,3 +57,15 @@ def test_rq11_verdict():
     assert rq11.verdict(10, (0.1, 0.2), 10, (0.1, 0.2))["primary"].startswith("insufficient")
     v = rq11.verdict(40, (0.02, 0.3), 40, (-0.05, 0.2))
     assert v["primary"].startswith("VP-04 on vwap-vp-2") and v["vs_v1"].startswith("no evidence")
+
+
+def test_rq11_frozen_files_unchanged():
+    import hashlib
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parents[1]
+    frozen = re.search(r"prev_day_v2\.py=([0-9a-f]{64}) vwap_vp_rq11\.py=([0-9a-f]{64})",
+                       (root.parent / ".ai/SHARED/research_questions.md").read_text(encoding="utf-8"))
+    for rel, want in (("cdcx/volume_profile/prev_day_v2.py", frozen.group(1)),
+                      ("cdcx/backtest/vwap_vp_rq11.py", frozen.group(2))):
+        assert hashlib.sha256((root / rel).read_bytes()).hexdigest() == want, rel

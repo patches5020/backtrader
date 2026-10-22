@@ -426,7 +426,7 @@ new ruleset version, because RQ6–RQ9 are frozen on the 24-bucket profile.
     strategy, not a cosmetic fix. RQ3's outcomes don't carry over, so preferring it for anything beyond display would need its own
     pre-registered outcome question on new data. RQ10 is complete. A display-only vwap-vp-2 next to vwap-vp-1 is the user's decision.
 
-## RQ11 — Do VP-04 signals do better on vwap-vp-2 levels? (DRAFT 2026-10-22 — proposed values, not frozen, not run)
+## RQ11 — Do VP-04 signals do better on vwap-vp-2 levels? (FROZEN 2026-10-22T15:54:00Z, not run)
 Research only. Follows RQ10: vwap-vp-2 (`prev_day_v2.py`, the same frozen session from 5m bars at 400 rows) is closer to
 TradingView but moves 11–25% of setup states, so it is a different strategy. vwap-vp-1, `classify()`, the families, the DECISION,
 the watcher (RQ6), RQ7–RQ9, sizing, gates and protected parameters are unchanged. The vwap-vp-2 line in the report is display only.
@@ -436,6 +436,10 @@ No result authorizes execution or a switch of rulesets.
 and `cdcx/backtest/vwap_vp_rq11.py` are written, unit-tested on synthetic data only (`tests/test_prev_day_v2.py`,
 `tests/test_vwap_vp_rq11.py`), and committed. The FROZEN line records the date and time (UTC), the commit, and the SHA-256 of both files and of this block
 (heading through section 6). After the freeze nothing in this block is edited.
+- `FROZEN: 2026-10-22T15:54:00Z commit 9ca50d6 prev_day_v2.py=2e2fcceb0f59ac56eb9d82fce1eae6f31f5b921083349b20edc0a8c4512a0d1b vwap_vp_rq11.py=24e2c127bd9c3debbbaada9d27f647d689527c82037b270b53c6df48fcc9f990 rq11_text=7ead4b3ed2279dd1c6a894db0205d6bd3f1097dc6f12cfbb01d70727d5764f0b`
+  (rq11_text = this block as committed in 9ca50d6, from its heading to the end of the file, before this line and the
+  heading were filled in. Values approved by the user as proposed. S = 2026-10-24 00:00Z, E = 2027-04-24 00:00Z; fetch/analyse once,
+  at or after 2027-04-25 00:00Z.)
 
 **1. Signals (PROPOSED).** 1H walk-forward exactly as `vwap_vp_research.find_signals`. At each bar t, `prev_day_levels` (vwap-vp-1)
 gives the session and its AVWAP; POC/VAH/VAL are replaced by `levels_v2` from that session's 5m bars at **400** rows (HVN/LVN
