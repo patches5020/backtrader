@@ -184,7 +184,7 @@ keeps its journal key, bar and evidence (audit trail).
 **Known limits.** ENTRY_CONFIRMATION_CANDIDATE needs the HTF 2-of-4, which read "none" through most of October
 2026, so it may be too rare to test. 8 weeks x 2 symbols detects only large differences.
 
-## RQ7 — Does VP-06 value-area re-entry have an edge after costs? (DRAFT 2026-10-22 — not frozen, not run)
+## RQ7 — Does VP-06 value-area re-entry have an edge after costs? (FROZEN 2026-10-22T14:13:03Z, not run)
 Research only. Source: the Trading Notes "3 volume-profile setups" video, setup 2 (assessed 2026-10-22). Nothing here
 changes `classify()`, an evidence family, the DECISION, the watcher (RQ6 stays frozen), sizing, a gate or a protected
 parameter, and no result authorizes execution.
@@ -193,6 +193,9 @@ parameter, and no result authorizes execution.
 `cdcx/volume_profile/vp_reentry.py` and `cdcx/backtest/vwap_vp_rq7.py` are written, unit-tested on synthetic data only
 (`tests/test_vp_reentry.py`), and committed. The FROZEN line records the date and time (UTC), the commit, and the SHA-256 of both files and of this block (heading
 through section 6). After the freeze nothing in this block is edited.
+- `FROZEN: 2026-10-22T14:13:03Z commit 4dd7a09 vp_reentry.py=9cccf5003f546b560bff472483ab2967be9bf59393e274664c877bd70a514f79 vwap_vp_rq7.py=e82651c18c9ec60247fa021e2a5016f7214cbe1e035bf8f8926a441664307844 rq7_text=71e20c267d7a1e1a26fdc6548a5fb76fb54ca5c7df29ea72c44725ee0f74be4e`
+  (rq7_text = this block as committed in 4dd7a09, from its heading up to the RQ8 heading, before this line and the
+  heading were filled in. S = 2026-10-24 00:00Z, E = 2027-01-16 00:00Z; fetch/analyse once, at or after 2027-01-17 00:00Z.)
 
 **1. Signal (vp_reentry.evaluate, exact).** 1H, previous-day levels from `prev_day_levels` (70% VA, 24 buckets,
 unchanged). Precondition: the last closed bar before today closed inside [VAL, VAH], inclusive. Excursion: a close

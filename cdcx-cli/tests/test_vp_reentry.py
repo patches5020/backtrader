@@ -166,3 +166,11 @@ def test_verdict_needs_sample_and_a_positive_lower_bound():
     assert rq7.verdict(40, (-0.1, 0.5), 40, (0.1, 0.2))["primary"].startswith("no evidence")
     v = rq7.verdict(40, (0.05, 0.5), 40, (0.01, 0.2))
     assert v["primary"].startswith("positive") and v["precondition"] == "the precondition adds information"
+
+
+def test_rq7_frozen_files_unchanged():
+    frozen = re.search(r"vp_reentry\.py=([0-9a-f]{64}) vwap_vp_rq7\.py=([0-9a-f]{64})",
+                       (ROOT.parent / ".ai/SHARED/research_questions.md").read_text(encoding="utf-8"))
+    for rel, want in (("cdcx/volume_profile/vp_reentry.py", frozen.group(1)),
+                      ("cdcx/backtest/vwap_vp_rq7.py", frozen.group(2))):
+        assert hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() == want, rel
