@@ -488,7 +488,11 @@ def _print_vwap_vp(exchange, symbol: str, timeframes: str, results: dict | None)
         except Exception as exc:
             print(f"PREV-DAY AVWAP + AFVP -- {symbol} {tf}: UNKNOWN (data unavailable: {exc})")
             continue
-        print(build_section(symbol, data, tf, results))
+        try:   # 5m bars feed only the vwap-vp-2 display line
+            fine = data if tf == "5m" else exchange.fetch_ohlcv(symbol, timeframe="5m", limit=1000)
+        except Exception:
+            fine = None
+        print(build_section(symbol, data, tf, results, fine_data=fine))
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -130,10 +130,11 @@ def test_crypto_section_keeps_its_window_and_gets_longer_context(monkeypatch, ca
             pass
 
         def fetch_ohlcv(self, symbol, timeframe="1h", limit=0):
-            seen["limit"] = limit
+            seen.setdefault("fetched", []).append(timeframe)
             return _hourly(limit, end=__import__("time").time())
 
-    def fake_build(symbol, data, timeframe, results, context_data=None):
+    def fake_build(symbol, data, timeframe, results, context_data=None, fine_data=None):
+        seen["fine"] = fine_data is not None
         seen["section"], seen["context"] = len(data.timestamps), len(context_data.timestamps)
         seen["same_tail"] = data.timestamps == context_data.timestamps[-len(data.timestamps):]
         return "ok"
@@ -142,6 +143,7 @@ def test_crypto_section_keeps_its_window_and_gets_longer_context(monkeypatch, ca
     monkeypatch.setattr("cdcx.volume_profile.vwap_confluence.build_section", fake_build)
     cli._print_vwap_vp("XRP/USD", "1h", results={})
     assert seen["section"] == 58 and seen["context"] == max(58, cli.settings.default_limit) and seen["same_tail"]
+    assert seen["fetched"] == ["1h", "5m"] and seen["fine"]          # 5m bars only feed the vwap-vp-2 line
     assert "ok" in capsys.readouterr().out
 
 

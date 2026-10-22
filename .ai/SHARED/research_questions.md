@@ -425,3 +425,47 @@ new ruleset version, because RQ6–RQ9 are frozen on the 24-bucket profile.
   - **Conclusion:** the level source materially changes WHICH bars signal. A vwap-vp-2 on 5m levels is therefore a different
     strategy, not a cosmetic fix. RQ3's outcomes don't carry over, so preferring it for anything beyond display would need its own
     pre-registered outcome question on new data. RQ10 is complete. A display-only vwap-vp-2 next to vwap-vp-1 is the user's decision.
+
+## RQ11 — Do VP-04 signals do better on vwap-vp-2 levels? (DRAFT 2026-10-22 — proposed values, not frozen, not run)
+Research only. Follows RQ10: vwap-vp-2 (`prev_day_v2.py`, the same frozen session from 5m bars at 400 rows) is closer to
+TradingView but moves 11–25% of setup states, so it is a different strategy. vwap-vp-1, `classify()`, the families, the DECISION,
+the watcher (RQ6), RQ7–RQ9, sizing, gates and protected parameters are unchanged. The vwap-vp-2 line in the report is display only.
+No result authorizes execution or a switch of rulesets.
+
+**0. Freeze.** Binding only when the user approves section 1 and freezes RQ11. Preconditions: `cdcx/volume_profile/prev_day_v2.py`
+and `cdcx/backtest/vwap_vp_rq11.py` are written, unit-tested on synthetic data only (`tests/test_prev_day_v2.py`,
+`tests/test_vwap_vp_rq11.py`), and committed. The FROZEN line records the date and time (UTC), the commit, and the SHA-256 of both files and of this block
+(heading through section 6). After the freeze nothing in this block is edited.
+
+**1. Signals (PROPOSED).** 1H walk-forward exactly as `vwap_vp_research.find_signals`. At each bar t, `prev_day_levels` (vwap-vp-1)
+gives the session and its AVWAP; POC/VAH/VAL are replaced by `levels_v2` from that session's 5m bars at **400** rows (HVN/LVN
+unchanged; they only affect VP-05 text). `classify()` is run unchanged. A session with an incomplete set of 5m bars gives no
+vwap-vp-2 signals that day, and is counted. **VP-04v2** = VP-04 ACCEPTED fires (primary); **VP-01v2** = VP-01 CONFIRMED (descriptive).
+The comparators VP-04v1 / VP-01v1 are `vwap_vp_research.find_signals` on the same bars. A test proves the driver reproduces vwap-vp-1 exactly
+when the levels aren't swapped.
+
+**2. Trade model and costs.** `vwap_vp_research.replay`, unchanged: stop 1.5 × ATR, TP1–TP4 2.2/2.6/3.2/4.5 R at 25% each, a bar touching
+both counts as the stop, one open trade per setup label, costs 7.5 + 2 bps per side.
+
+**3. Data and periods.** XRP/USD and XLM/USD, Crypto.com 1H **and 5m**, each series fetched once and identified by SHA-256.
+- **Confirmatory (prospective):** S = 00:00Z of the first UTC day starting at least 24 h after the FROZEN timestamp; E = S + **182 days**. The data is fetched once at or
+  after E + 24 h, from S − 60 days, and analysed once. No interim looks.
+- **Exploratory 2025-06-01 → 2026-05-31:** descriptive only. vwap-vp-1 VP-04 outcomes there are known (RQ3); vwap-vp-2 outcomes have
+  not been computed.
+
+**4. Statistics.** Pooled across both symbols, `random.Random(20261025)`, one generator, 10,000 resamples, 97.5% intervals, in this order:
+VP-04v2, VP-04v1, VP-01v2, VP-01v1 (each mean net R), then VP-04 v2 − v1, then VP-01 v2 − v1 (resampled within each group). Also
+reported: trade count, win rate, max drawdown in R, the figures per symbol, and skipped sessions.
+
+**5. Decision rule (confirmatory only).**
+- **Primary:** "VP-04 on vwap-vp-2 has positive expectancy after costs" only if it has ≥ 30 trades and the lower bound is > 0.
+- **Secondary:** "vwap-vp-2 VP-04 beats vwap-vp-1 VP-04" only if both groups have ≥ 30 trades and the lower bound of the difference is > 0.
+
+The VP-01 figures never decide. Anything else = no or inconclusive. A positive result only allows a separate, user-approved proposal
+(e.g. to make vwap-vp-2 the levels the section scores on), which would itself be a new version.
+
+**6. Known limits.**
+- vwap-vp-2 still misses TradingView by about 0.5 ATR (median) on XLM. That looks like volume-data differences between the Crypto.com API and
+  TradingView's feed rather than method, and it is unresolved.
+- Two-peak days were tested as an explanation and rejected: the peak ratio doesn't predict mismatches.
+- 5m history is 12× the bars to fetch.

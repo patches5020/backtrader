@@ -557,7 +557,13 @@ def _print_vwap_vp_one(symbol: str, timeframe: str, results: dict | None) -> Non
     from dataclasses import replace
     data = replace(history, **{k: list(getattr(history, k))[-section_n:]
                                for k in ("timestamps", "opens", "highs", "lows", "closes", "volumes")})
-    print(build_section(symbol, data, timeframe, results, context_data=history))
+    fine = history if timeframe == "5m" else None   # 5m bars feed only the vwap-vp-2 display line
+    if fine is None:
+        try:
+            fine = exchange.fetch_ohlcv(symbol, timeframe="5m", limit=2 * 288 + 20)
+        except Exception:
+            fine = None                             # the line then reads UNKNOWN; the section is unaffected
+    print(build_section(symbol, data, timeframe, results, context_data=history, fine_data=fine))
 
 
 def _handle_backtrader(args: argparse.Namespace) -> int:
