@@ -371,3 +371,20 @@ new ruleset version, because RQ6–RQ9 are frozen on the 24-bucket profile.
      best-parity cell replaced the 24-row 1H profile. No trade outcomes; outcomes would need a new pre-registered question.
 - **Acceptance:** a cell is "better" only if its median error against TradingView is below the 24-row 1H error on
   both symbols and it is at least as stable. The finer source data also costs API calls (5m = 12× the bars), which is reported.
+- **RESULT steps 1 + 3 (run 2026-10-22, last 20 completed UTC sessions, `cdcx/backtest/vp_resolution_rq10.py`; data in
+  `cdcx-cli/trading/research/rq10/`, SHA-256 in `rq10_result.json`).** Median over sessions of the worst of POC/VAH/VAL, in
+  ATR(11, 1H) units. Error is measured against 5m @ 400 rows, an INTERNAL PROXY, not TradingView:
+
+  | cell | XRP err | XRP rows ±10% | XLM err | XLM rows ±10% |
+  |---|---|---|---|---|
+  | 1H @ 24 (current) | 0.32 | 0.19 | 0.40 | 0.29 |
+  | 1H @ 400 | 0.21 | 0.01 | 0.43 | 0.01 |
+  | 15m @ 400 | 0.10 | 0.01 | 0.37 | 0.01 |
+  | 5m @ 100 | 0.03 | 0.04 | 0.05 | 0.05 |
+
+  - **Current setting:** on 1H at 24 rows, a level moves about 0.2–0.3 ATR when the row count changes by ±10%, so it is coarse.
+  - **More rows alone don't help:** 400 rows on 1H candles is stable, but it isn't closer to the 5m proxy. This agrees with RQ4.
+  - **Value-area method:** growing the value area two rows at a time (TradingView-style) vs one row (cdcx) changes VAH/VAL by about 0.2 ATR at 24 rows and about 0.01 ATR at 400.
+  - **Leading candidate:** 5m candles at 100–400 rows.
+  - **Not decided:** the reference is a proxy built from the same 5m data, so step 2 (TradingView parity) is required before any recommendation. Step 4 hasn't been run.
+  - **Nothing changed:** DEFAULT_BUCKETS stays 24.

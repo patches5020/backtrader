@@ -4,6 +4,7 @@ Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
 ## 2026-10-22
+- RQ10 steps 1 + 3: profile resolution x source-bar calculation study (vp_resolution_rq10.py); 1H@24 is coarse (0.2-0.3 ATR sensitivity), 5m@100-400 the leading candidate pending TradingView parity; no default changed; 900 passed. Protected params: unchanged.
 - RQ9 FROZEN 2026-10-22T14:43:42Z (commit 762fc0e; S 2026-10-24, E 2027-04-24, analyse once on or after 2027-04-25). Protected params: unchanged.
 - VP-01F first-touch POC filter (research-only display row, LTF + HTF, cdcx-ai + cdcx-equity; VP-01 unchanged) + RQ9 pre-registration and driver vwap_vp_rq9.py + RQ10 plan; 894 passed. RQ6/RQ7/RQ8 untouched. Protected params: unchanged.
 - RQ8 FROZEN 2026-10-22T14:27:54Z (commit 5fcbcc4; S 2026-10-24, E 2027-04-24, analyse once on or after 2027-04-25). Protected params: unchanged.
