@@ -62,3 +62,12 @@ def test_study_runs_every_cell_and_reference_has_zero_error():
     assert ref and all(max(r["err"].values()) == pytest.approx(0) for r in ref)
     summ = rq10.summarize(rows)
     assert summ["5m@400"]["median_err_atr"] == pytest.approx(0)
+
+
+def test_tv_parity_measures_error_in_atr_per_cell():
+    rows = [{"session": 100.0, "source": "5m", "rows": 400, "atr": 0.01, "poc": 1.00, "vah": 1.02, "val": 0.99},
+            {"session": 200.0, "source": "5m", "rows": 400, "atr": 0.01, "poc": 1.00, "vah": 1.02, "val": 0.99}]
+    tv = {"100": [1.00, 1.02, 0.99], "200": [1.005, 1.02, 0.99]}
+    p = rq10.tv_parity(rows, tv)["5m@400"]
+    assert p["n"] == 2 and p["within_0.10"] == 0.5
+    assert p["median_worst"] == pytest.approx(0.25) and p["mean_worst"] == pytest.approx(0.25)

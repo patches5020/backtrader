@@ -144,6 +144,39 @@ def summarize(rows: list[dict]) -> dict:
             for k, c in cells.items()}
 
 
+def tv_parity(rows: list[dict], tv_levels: dict) -> dict:
+    """Step 2: |cdcx level - TradingView Fixed Range VP level| / ATR per cell. `tv_levels` = {session start: [poc,
+    vah, val]} read through the TradingView MCP (400 rows, 70% VA). Returns median / mean of the worst level and of
+    each level, and the share of sessions within 0.10 ATR."""
+    cells: dict = {}
+    for r in rows:
+        tv = tv_levels.get(str(int(float(r["session"]))))
+        if not tv:
+            continue
+        e = {x: abs(r[x] - t) / r["atr"] for x, t in zip(LEVELS, tv)}
+        c = cells.setdefault(f"{r['source']}@{r['rows']}", {"worst": [], **{x: [] for x in LEVELS}})
+        c["worst"].append(max(e.values()))
+        for x in LEVELS:
+            c[x].append(e[x])
+    return {k: {"n": len(c["worst"]), "median_worst": statistics.median(c["worst"]),
+                "mean_worst": statistics.fmean(c["worst"]),
+                "within_0.10": sum(w <= 0.10 for w in c["worst"]) / len(c["worst"]),
+                **{f"median_{x}": statistics.median(c[x]) for x in LEVELS}} for k, c in cells.items()}
+
+
+def format_parity(par: dict) -> str:
+    lines = ["TradingView parity (step 2): |cdcx - TV FRVP 400 rows| / ATR(11, 1h); worst of POC/VAH/VAL unless named"]
+    for sym, p in par.items():
+        lines.append(f"\n{sym}   cell      n   median worst   mean worst   <=0.10 ATR   med POC   med VAH   med VAL")
+        for src in SOURCES:
+            for rows in ROWS:
+                c = p.get(f"{src}@{rows}")
+                if c:
+                    lines.append(f"      {src:>3}@{rows:<4} {c['n']:>4}      {c['median_worst']:6.3f}       {c['mean_worst']:6.3f}"
+                                 f"       {c['within_0.10']:5.0%}     {c['median_poc']:6.3f}    {c['median_vah']:6.3f}    {c['median_val']:6.3f}")
+    return "\n".join(lines)
+
+
 def format_report(per: dict, hashes: dict) -> str:
     f = lambda x: f"{x:6.3f}" if x is not None else "   n/a"
     lines = ["RQ10 -- profile resolution x source bars (calculation study; reference = 5m@400 PROXY, not TradingView)",
@@ -171,6 +204,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     g.add_argument("--fetch", metavar="DIR")
     g.add_argument("--data", metavar="DIR")
     ap.add_argument("--sessions", type=int, default=SESSIONS)
+    ap.add_argument("--tv", metavar="DIR", help="also compare with rq10_tv_<sym>.json TradingView readings (step 2)")
     ap.add_argument("--out")
     a = ap.parse_args(argv)
     if a.fetch:
@@ -194,9 +228,18 @@ def main(argv: Optional[list[str]] = None) -> int:
         raw[sym] = study_symbol(series, a.sessions)
         per[sym] = summarize(raw[sym])
     print(format_report(per, hashes))
+    parity = {}
+    if a.tv:
+        for sym in SYMBOLS:
+            path = os.path.join(a.tv, f"rq10_tv_{sym.split('/')[0].lower()}.json")
+            if os.path.exists(path):
+                with open(path) as fh:
+                    parity[sym] = tv_parity(raw[sym], json.load(fh)["levels"])
+        print()
+        print(format_parity(parity))
     if a.out:
         with open(a.out, "w") as fh:
-            json.dump({"hashes": hashes, "summary": per, "rows": raw}, fh, indent=1, default=str)
+            json.dump({"hashes": hashes, "summary": per, "parity": parity, "rows": raw}, fh, indent=1, default=str)
     return 0
 
 

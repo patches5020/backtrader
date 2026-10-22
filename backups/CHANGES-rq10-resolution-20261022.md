@@ -16,3 +16,13 @@ Approved by the user ("Yes to all"). A calculation study, not a signal test. DEF
   - 5m@100 err 0.03 / 0.05.
   - Leading candidate: 5m @ 100–400 rows.
   - Not decided: step 2 (TradingView parity) is needed.
+- **Step 2, TradingView parity** (same day). The TradingView Fixed Range VP (400 rows, 70%) was read through the MCP for all 20 sessions per symbol,
+  using temporary drawings that were created, read and removed. The user's drawings were verified identical afterwards: XRP 8, XLM 6, studies 3, chart back on
+  XRPUSD 15m. XRP 2026-10-15 matches RQ4 exactly. `vp_resolution_rq10.py` gains `tv_parity` / `--tv`, plus 1 test; 901 passed.
+  - **Median worst-level error vs TV:**
+    - 1H@24 (current): 0.30 ATR XRP / 0.95 ATR XLM.
+    - 5m@400: 0.09 / 0.53.
+    - 5m@100: 0.13 / 0.52.
+  - **Within 0.10 ATR:** about half the sessions at 5m; the rest are two-peak days where the POC node flips.
+  - **Value-area method:** the TV-style method doesn't help.
+  - **Recommendation for the user to decide:** 5m source bars as a new ruleset version (vwap-vp-2), never edited into the frozen vwap-vp-1.

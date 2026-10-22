@@ -388,3 +388,29 @@ new ruleset version, because RQ6–RQ9 are frozen on the 24-bucket profile.
   - **Leading candidate:** 5m candles at 100–400 rows.
   - **Not decided:** the reference is a proxy built from the same 5m data, so step 2 (TradingView parity) is required before any recommendation. Step 4 hasn't been run.
   - **Nothing changed:** DEFAULT_BUCKETS stays 24.
+- **RESULT step 2, TradingView parity (run 2026-10-22).** TradingView Fixed Range VP (400 rows, 70% VA, 15m chart) was read
+  through the TradingView MCP for the same 20 sessions per symbol, using temporary drawings (created, read, removed; the user's
+  drawings were verified unchanged). The readings are in `rq10_tv_xrp.json` / `rq10_tv_xlm.json`. A check that the method works: XRP 2026-10-15 reads
+  1.3079 / 1.3252 / 1.2924, identical to RQ4. Figures are the median of the worst of POC/VAH/VAL vs TV, in ATR(11, 1H), with the share
+  of sessions within 0.10 ATR:
+
+  | cell | XRP median | XRP ≤ 0.10 | XLM median | XLM ≤ 0.10 |
+  |---|---|---|---|---|
+  | 1H @ 24 (current) | 0.30 | 5% | 0.95 | 0% |
+  | 1H @ 400 | 0.30 | 15% | 0.85 | 15% |
+  | 15m @ 400 | 0.16 | 40% | 1.41 | 15% |
+  | 5m @ 100 | 0.13 | 45% | 0.52 | 40% |
+  | 5m @ 400 | 0.09 | 50% | 0.53 | 35% |
+
+  - **Current setting:** cdcx's 1H/24 levels sit a median 0.3 ATR (XRP) to 0.95 ATR (XLM) from TradingView's.
+  - **Rows alone:** 400 rows on 1H candles doesn't help.
+  - **Best:** 5m candles roughly halve the error.
+  - **Two-peak days:** even at 5m, on about half the sessions the POC lands on a different volume node than TradingView's. On XLM, TradingView's
+    VAL is often the day's low, which suggests days with two volume peaks, where small data differences flip the winning node.
+  - **Value-area method:** growing it TradingView-style (two rows at a time) doesn't reduce the VAH/VAL error (5m@400: 0.031 vs 0.034 XRP, 0.249 vs 0.247 XLM).
+  - **Interpretation:** the source-bar resolution is the main factor; the row count and the value-area method are minor. On two-peak days the POC is fragile for
+    any method.
+  - **Status:** step 4 (downstream state changes) is not run. No default changed.
+  - **Recommendation for the user to decide:**
+    - 5m @ 100–400 as a NEW ruleset version (vwap-vp-2), never edited into the frozen vwap-vp-1 that RQ6–RQ9 test.
+    - Optionally, a "two-peak day" flag (POC unstable) as context.
