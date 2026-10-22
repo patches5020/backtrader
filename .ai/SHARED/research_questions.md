@@ -425,6 +425,18 @@ new ruleset version, because RQ6–RQ9 are frozen on the 24-bucket profile.
   - **Conclusion:** the level source materially changes WHICH bars signal. A vwap-vp-2 on 5m levels is therefore a different
     strategy, not a cosmetic fix. RQ3's outcomes don't carry over, so preferring it for anything beyond display would need its own
     pre-registered outcome question on new data. RQ10 is complete. A display-only vwap-vp-2 next to vwap-vp-1 is the user's decision.
+- **RESULT follow-up, data check + 1m parity (run 2026-10-22).**
+  - **The data is the same:** TradingView's 15m candles (read through the MCP) are IDENTICAL to the Crypto.com API's on every open, high, low,
+    close and volume (XRP 1920/1920, XLM 1918/1918; TradingView omits 2 XLM bars the API has). The "volume-data
+    difference" hypothesis is wrong.
+  - **1m candles close the gap:** profiles from **1m** API candles at 400 rows match TradingView's Fixed Range VP to a
+    median worst-level error of **0.018 ATR (XRP) / 0.044 ATR (XLM)**. That is 80% / 60% of sessions within 0.10 ATR, and the POC is within 0.10 ATR
+    on 16/20 and 18/20 days. Compare 5m@400: 0.09 / 0.53.
+  - **Conclusion:** TradingView builds the profile from 1m intrabar data. The remaining error at 5m comes from spreading each candle's volume evenly over
+    its high–low range, which misleads when volume within a candle is lumpy (XLM).
+  - **Constraint:** vwap-vp-2 (5m) is frozen in RQ11 and stays as is. A 1m version would be a separate vwap-vp-3 (a new file; about 1,440
+    candles per session to fetch). That is the user's decision. The 1m data is in `cdcx-cli/trading/research/rq10/rq10_{xrp,xlm}_1m.json`
+    (SHA-256 7a36046ceb4b… / 1f24ff2b9f13…).
 
 ## RQ11 — Do VP-04 signals do better on vwap-vp-2 levels? (FROZEN 2026-10-22T15:54:00Z, not run)
 Research only. Follows RQ10: vwap-vp-2 (`prev_day_v2.py`, the same frozen session from 5m bars at 400 rows) is closer to

@@ -30,3 +30,8 @@ Approved by the user ("Yes to all"). A calculation study, not a signal test. DEF
   - Using 5m levels changes VP-01/VP-04/VP-06/VP-04P states on 11–25% of 1H bars and the DECISION on 2–3% (XRP) / 10–11% (XLM).
   - VP-03/VP-05 are unaffected.
   - A vwap-vp-2 would be a different strategy and would need its own outcome RQ. RQ10 is complete.
+- **Follow-up: data check + 1m parity** (same day).
+  - TradingView's 15m candles are identical to the Crypto.com API's (XRP 1920/1920, XLM 1918/1918), so the data is not the cause.
+  - 1m@400 profiles match TradingView's FRVP to 0.018 / 0.044 ATR median (XRP / XLM), with the POC within 0.10 ATR on 16/20 and 18/20 days.
+  - TradingView uses 1m intrabar data. A 1m "vwap-vp-3" is possible as a new file (vwap-vp-2 is frozen in RQ11); that is the user's decision.
+  - The chart was restored (XRPUSD 15m, 3 studies, the same 8 drawings).
