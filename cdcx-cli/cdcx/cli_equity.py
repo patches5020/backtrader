@@ -556,9 +556,16 @@ def main(argv: list[str] | None = None) -> int:
             # by confluence, sizing or --execute. Best-effort: a failure only skips this section.
             try:
                 from . import htf_avwap
+                htf_data = dict(raw_data_by_tf)
+                for tf in htf_avwap.TIMEFRAMES:   # a requested HTF whose analysis failed (e.g. too few 1W bars
+                    if tf in timeframes and tf not in htf_data:   # after an IPO) still gets its raw-bar context
+                        try:
+                            htf_data[tf] = exchange.fetch_ohlcv(args.symbol, timeframe=tf, limit=args.limit)
+                        except Exception as exc:
+                            print(f"(HTF AVWAP {tf}: data unavailable: {exc})", file=sys.stderr)
                 print()
                 print(htf_avwap.format_htf_avwap_section(args.symbol, htf_avwap.build_htf_avwap(
-                    raw_data_by_tf, signals=results, symbol=args.symbol)))
+                    htf_data, signals=results, symbol=args.symbol)))
             except Exception as exc:
                 print(f"(HTF AVWAP context unavailable: {exc})", file=sys.stderr)
 

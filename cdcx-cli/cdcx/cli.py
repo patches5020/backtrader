@@ -449,6 +449,9 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict, timefra
         if tf not in cache:
             smap, data = _fetch_structure_map(symbol, tf, limit)
             if smap is None:
+                # e.g. a recently listed symbol with too few 1W bars for the structure map: the trigger
+                # can't run, but the HTF AVWAP context only needs raw bars, so it still prints.
+                _print_htf_avwap_fallback(symbol, limit, cache, signals)
                 return False
             cache[tf] = (smap, data)
 
@@ -509,15 +512,41 @@ def _print_structure_setup_section(symbol: str, limit: int, cache: dict, timefra
     # Analysis-only HTF AVWAP (htf_avwap.py), anchored at each 4H/1D/1W AVP's
     # own anchor bar. Printed last so every section above is untouched; never
     # read by the gate, the grade or execution. Best-effort like the grade.
+    from . import htf_avwap
+    _print_htf_avwap(symbol, {tf: cache[tf][1] for tf in htf_avwap.TIMEFRAMES}, signals)
+
+    return True
+
+
+def _print_htf_avwap(symbol: str, data_by_tf: dict, signals: dict | None) -> None:
     try:
         from . import htf_avwap
         print()
         print(htf_avwap.format_htf_avwap_section(symbol, htf_avwap.build_htf_avwap(
-            {tf: cache[tf][1] for tf in htf_avwap.TIMEFRAMES}, signals=signals, symbol=symbol)))
+            data_by_tf, signals=signals, symbol=symbol)))
     except Exception as exc:
         print(f"(HTF AVWAP context unavailable: {exc})", file=sys.stderr)
 
-    return True
+
+def _print_htf_avwap_fallback(symbol: str, limit: int, cache: dict, signals: dict | None) -> None:
+    """HTF AVWAP context when the 1W/1D/4H/1H structure trigger can't run: cached series where they exist,
+    raw bars for the rest (a timeframe that can't be fetched at all is left out). Analysis only."""
+    from . import htf_avwap
+    from .exchange.cryptocom import CryptoComExchange
+
+    data_by_tf = {}
+    for tf in htf_avwap.TIMEFRAMES:
+        if tf in cache:
+            data_by_tf[tf] = cache[tf][1]
+            continue
+        try:
+            data_by_tf[tf] = CryptoComExchange(settings.cryptocom_api_key, settings.cryptocom_api_secret).fetch_ohlcv(
+                symbol, timeframe=tf, limit=limit)
+        except Exception as exc:
+            print(f"(HTF AVWAP {tf}: data unavailable: {exc})", file=sys.stderr)
+    print("(Structure trigger unavailable for this symbol -- see the error above; HTF AVWAP context still shown.)")
+    if data_by_tf:
+        _print_htf_avwap(symbol, data_by_tf, signals)
 
 
 def _print_vwap_vp(symbol: str, timeframes: str, results: dict | None) -> None:

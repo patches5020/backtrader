@@ -411,3 +411,46 @@ def test_equity_htf_section_has_the_setup_block(monkeypatch):
     section = out[out.index("HTF AVWAP CONTEXT"):]
     assert rc == 0
     assert "VP-01 POC reaction" in section and "DECISION: " in section and "Execution: NOT AUTHORIZED" in section
+
+
+# --- short-history symbols (e.g. SPCX/USD: too few 1W bars for the structure map) ---------------
+
+def test_htf_avwap_still_prints_when_the_structure_trigger_cannot_run(monkeypatch):
+    data = {tf: _series(tf, seed=s, n=300) for tf, s in (("1h", 21), ("4h", 22), ("1d", 23), ("1w", 24))}
+    monkeypatch.setattr(cli, "_run_single",
+                        lambda symbol, timeframe, limit, **kw: engine.analyze_ohlcv(symbol, data[timeframe],
+                                                                                    timeframe=timeframe))
+
+    def fake_structure(symbol, timeframe, limit):
+        if timeframe == "1w":
+            return None, None                                  # as for a symbol listed a few months ago
+        d = data[timeframe]
+        return structure_levels.compute_structure_map(d.highs, d.lows, d.closes, d.volumes), d
+
+    class Fake:
+        def __init__(self, *a, **k):
+            pass
+
+        def fetch_ohlcv(self, symbol, timeframe="1h", limit=0):
+            return data[timeframe]
+
+    monkeypatch.setattr(cli, "_fetch_structure_map", fake_structure)
+    monkeypatch.setattr("cdcx.exchange.cryptocom.CryptoComExchange", Fake)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        cli.main(["--symbol", "SPCX/USD", "--timeframes", "1h,4h,1d,1w", "--structure", "--no-vwap-vp"])
+    out = buf.getvalue()
+    assert "STRUCTURE SETUP" not in out and "Structure trigger unavailable" in out    # the trigger still fails closed
+    section = out[out.index("HTF AVWAP CONTEXT"):]
+    assert all(f"{tf} | anchor" in section for tf in ("4H", "1D", "1W"))
+    assert "Execution: NOT AUTHORIZED" in section
+
+
+def test_equity_htf_avwap_keeps_a_timeframe_whose_analysis_failed(monkeypatch):
+    from cdcx import cli_equity
+    real = cli_equity._run_single
+    monkeypatch.setattr(cli_equity, "_run_single",
+                        lambda ex, symbol, tf, limit: None if tf == "1w" else real(ex, symbol, tf, limit))
+    rc, out = _run_equity_report(monkeypatch)
+    section = out[out.index("HTF AVWAP CONTEXT"):]
+    assert all(f"{tf} | anchor" in section for tf in ("4H", "1D", "1W"))

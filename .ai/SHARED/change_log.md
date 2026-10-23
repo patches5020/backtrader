@@ -3,6 +3,9 @@
 Each entry: date, commit, what changed, whether any protected parameter changed.
 Claude Code appends here after each handoff task. Full detail: `backups/CHANGES-*.md` and `git log`.
 
+## 2026-10-23
+- HTF AVWAP context now prints for short-history symbols (SPCX/USD: 22 1W bars < 34 for ADX(17) aborted the structure section): cdcx-ai fallback from raw bars when the structure trigger can't run; cdcx-equity re-fetches a failed HTF for the context; 926 passed. Analysis only. Protected params: unchanged.
+
 ## 2026-10-22
 - RQ12 FROZEN 2026-10-22T18:07:52Z (commit 4e242b0; S 2026-10-24, E 2027-04-24, analyse once on or after 2027-04-25); prev_day_v3.py now frozen; reminder task 2027-04-25 09:15; 924 passed. Protected params: unchanged.
 - RQ12 DRAFT (VP-04 on vwap-vp-3 1m levels vs vwap-vp-1; not frozen) + driver vwap_vp_rq12.py; 923 passed. RQ6-RQ11 untouched. Protected params: unchanged.
